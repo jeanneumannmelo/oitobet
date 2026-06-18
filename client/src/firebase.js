@@ -1,12 +1,9 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
-// Em produção usa o próprio domínio como authDomain — resolve iOS Safari ITP.
-// O servidor Express faz proxy de /__/ para oitobet-brasil.firebaseapp.com.
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.');
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
-  authDomain: isLocal ? "oitobet-brasil.firebaseapp.com" : window.location.hostname,
+  authDomain: "oitobet-brasil.firebaseapp.com",
   projectId: "oitobet-brasil",
   storageBucket: "oitobet-brasil.firebasestorage.app",
   messagingSenderId: "758991093577",
@@ -17,10 +14,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 // browserLocalPersistence usa localStorage em vez de IndexedDB
 // Necessário para Safari iOS (ITP bloqueia storage cross-origin com IndexedDB)
-export const auth = initializeAuth(app, {
-  persistence: browserLocalPersistence,
-  popupRedirectResolver: browserPopupRedirectResolver,
-});
+export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // Analytics only in production — loaded lazily to avoid module-level errors

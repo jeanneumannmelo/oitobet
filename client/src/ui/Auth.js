@@ -1,6 +1,6 @@
 import { login, auth, db, ensureUserDoc, getStoredRedirectError } from '../firebase.js';
 import {
-  GoogleAuthProvider, signInWithRedirect,
+  GoogleAuthProvider, signInWithPopup,
   createUserWithEmailAndPassword,
   updateProfile as fbUpdateProfile,
   sendPasswordResetEmail,
@@ -131,8 +131,9 @@ function registerHTML() {
 
 async function googleSignIn() {
   const provider = new GoogleAuthProvider();
-  // Redirect em todos os ambientes — popup é bloqueado silenciosamente em produção
-  await signInWithRedirect(auth, provider);
+  const cred = await signInWithPopup(auth, provider);
+  await ensureUserDoc(cred.user);
+  return cred;
 }
 
 function friendlyError(code) {
