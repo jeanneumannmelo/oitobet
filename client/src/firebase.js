@@ -39,14 +39,23 @@ export async function ensureUserDoc(user, extra = {}) {
   }
 }
 
-// ── Redirect result (mobile Google login) ────────────────────────────────────
+// ── Redirect result (Google login via redirect) ───────────────────────────────
 // Called once at module load — must run before onAuthStateChanged fires.
+let _redirectError = null;
+export const getStoredRedirectError = () => _redirectError;
+
 export const redirectResultPromise = getRedirectResult(auth)
   .then(async result => {
     if (result?.user) await ensureUserDoc(result.user);
     return result?.user || null;
   })
-  .catch(() => null);
+  .catch(e => {
+    if (e.code !== 'auth/no-redirect-operation-pending') {
+      _redirectError = e;
+      console.error('[redirectResult]', e.code, e.message);
+    }
+    return null;
+  });
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 

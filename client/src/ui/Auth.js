@@ -1,4 +1,4 @@
-import { login, auth, db, ensureUserDoc } from '../firebase.js';
+import { login, auth, db, ensureUserDoc, getStoredRedirectError } from '../firebase.js';
 import {
   GoogleAuthProvider, signInWithPopup, signInWithRedirect,
   createUserWithEmailAndPassword,
@@ -129,18 +129,10 @@ function registerHTML() {
 
 // ── Google Auth ────────────────────────────────────────────────────────────────
 
-const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
 async function googleSignIn() {
   const provider = new GoogleAuthProvider();
-  if (isMobile) {
-    // Redirect flow — page reloads; result is handled in showAuth()
-    await signInWithRedirect(auth, provider);
-    return;
-  }
-  const cred = await signInWithPopup(auth, provider);
-  await ensureUserDoc(cred.user);
-  return cred;
+  // Redirect em todos os ambientes — popup é bloqueado silenciosamente em produção
+  await signInWithRedirect(auth, provider);
 }
 
 function friendlyError(code) {
@@ -314,10 +306,19 @@ export function showAuth() {
   document.body.appendChild(_overlay);
   wireLogin(_overlay);
 
+  // Mostrar erro do redirect Google (ex: domínio não autorizado)
+  const redirectErr = getStoredRedirectError();
+  if (redirectErr) {
+    const errEl = _overlay.querySelector('#login-err');
+    if (errEl) {
+      errEl.textContent = friendlyError(redirectErr.code);
+      errEl.classList.add('show');
+    }
+  }
+
   _overlay.addEventListener('click', e => {
     if (e.target.closest('#auth-back-btn') && _currentView === 'register') switchTo('login');
   });
-
 }
 
 export function hideAuth() {
