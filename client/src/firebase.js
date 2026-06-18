@@ -1,9 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+// Em produção usa o próprio domínio como authDomain — resolve iOS Safari ITP.
+// O servidor Express faz proxy de /__/ para oitobet-brasil.firebaseapp.com.
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('192.168.');
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
-  authDomain: "oitobet-brasil.firebaseapp.com",
+  authDomain: isLocal ? "oitobet-brasil.firebaseapp.com" : window.location.hostname,
   projectId: "oitobet-brasil",
   storageBucket: "oitobet-brasil.firebasestorage.app",
   messagingSenderId: "758991093577",

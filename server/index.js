@@ -21,6 +21,26 @@ const io = new Server(http, {
   transports: ['websocket', 'polling'],
 });
 
+// Proxy Firebase auth handler — corrige iOS Safari ITP (cross-origin storage bloqueado).
+// Com authDomain = mesmo domínio da app, o iframe de auth roda same-origin.
+app.use('/__/', async (req, res) => {
+  try {
+    const url = `https://oitobet-brasil.firebaseapp.com/__${req.url}`;
+    const upstream = await fetch(url, { redirect: 'follow' });
+    res.status(upstream.status);
+    upstream.headers.forEach((v, k) => {
+      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(k)) {
+        res.setHeader(k, v);
+      }
+    });
+    const buf = await upstream.arrayBuffer();
+    res.end(Buffer.from(buf));
+  } catch (e) {
+    console.error('[firebase-proxy]', e.message);
+    res.status(502).end();
+  }
+});
+
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
 if (existsSync(distPath)) {
