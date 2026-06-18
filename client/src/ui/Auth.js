@@ -1,6 +1,6 @@
 import { login, auth, db, ensureUserDoc, getStoredRedirectError } from '../firebase.js';
 import {
-  GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+  GoogleAuthProvider, signInWithRedirect,
   createUserWithEmailAndPassword,
   updateProfile as fbUpdateProfile,
   sendPasswordResetEmail,
