@@ -1,0 +1,17 @@
+{
+  "name": "8ball-pool",
+  "private": true,
+  "workspaces": ["client", "server"],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "build": "npm run build --workspace=client",
+    "start": "node server/index.js",
+    "heroku-postbuild": "npm run build --workspace=client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

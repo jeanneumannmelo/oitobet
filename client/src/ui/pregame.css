@@ -1,0 +1,148 @@
+/* ── Pre-game loading screen ──────────────────────────────────────────────── */
+#pregame-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  background: #060810;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .35s ease;
+}
+#pregame-overlay.pg-visible { opacity: 1; }
+#pregame-overlay.pg-out     { opacity: 0; }
+
+.pg-card {
+  width: 100%; max-width: 360px; padding: 32px 28px 28px;
+  display: flex; flex-direction: column; align-items: center; gap: 24px;
+  text-align: center;
+}
+
+/* Rolling balls header */
+.pg-balls-row {
+  display: flex; gap: 10px; justify-content: center;
+  height: 36px; align-items: center;
+}
+.pg-ball {
+  width: 28px; height: 28px; border-radius: 50%;
+  animation: pgBallBounce 0.6s ease-in-out infinite alternate;
+  box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  position: relative;
+}
+.pg-ball::after {
+  content:''; position: absolute; top: 4px; left: 6px;
+  width: 7px; height: 5px; border-radius: 50%;
+  background: rgba(255,255,255,.35); transform: rotate(-20deg);
+}
+/* Ball colors (pool colors) */
+.pg-ball-1  { background: #e8c000; }
+.pg-ball-2  { background: #1a5fbb; }
+.pg-ball-3  { background: #cc2222; }
+.pg-ball-8  { background: #1a1a1a; animation-delay: .21s !important; }
+.pg-ball-9  { background: #e8c000; border: 3px solid #e8c000; }
+.pg-ball-10 { background: #1a5fbb; border: 3px solid #1a5fbb; }
+.pg-ball-11 { background: #cc2222; border: 3px solid #cc2222; }
+
+@keyframes pgBallBounce {
+  from { transform: translateY(0);   }
+  to   { transform: translateY(-12px); }
+}
+
+/* Status text */
+.pg-status {
+  font-size: 13px; font-weight: 600; color: rgba(255,255,255,.4);
+  letter-spacing: .5px; animation: pgPulse 1.5s ease-in-out infinite;
+}
+@keyframes pgPulse {
+  0%,100% { opacity: .4; }
+  50%     { opacity: .9; }
+}
+
+/* Players row */
+.pg-players {
+  display: flex; align-items: center; gap: 20px; width: 100%;
+  justify-content: center;
+}
+.pg-player {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  flex: 1; max-width: 120px;
+}
+.pg-avatar {
+  width: 72px; height: 72px; border-radius: 50%; overflow: hidden;
+  border: 3px solid rgba(0,212,112,.3);
+  box-shadow: 0 0 24px rgba(0,212,112,.15);
+  display: flex; align-items: center; justify-content: center;
+}
+.pg-photo { width: 100%; height: 100%; object-fit: cover; }
+.pg-init-av {
+  width: 100%; height: 100%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 900; color: #fff; letter-spacing: -1px;
+}
+.pg-pname {
+  font-size: 13px; font-weight: 700; color: #fff;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.pg-vs {
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.pg-vs-inner {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(255,255,255,.05); border: 2px solid rgba(255,255,255,.1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 900; color: rgba(255,255,255,.5);
+  animation: vsPulse 1.2s ease-in-out infinite;
+}
+@keyframes vsPulse {
+  0%,100% { transform: scale(1); border-color: rgba(0,212,112,.2); }
+  50%     { transform: scale(1.1); border-color: rgba(0,212,112,.5); }
+}
+
+/* Bet label */
+.pg-bet-label {
+  font-size: 12px; font-weight: 700; padding: 6px 16px; border-radius: 20px;
+  background: rgba(0,212,112,.1); border: 1px solid rgba(0,212,112,.2);
+  color: #00d470;
+}
+
+/* Search spinner (player 2 slot while searching) */
+.pg-searching-av {
+  border-color: rgba(0,212,112,.15) !important;
+  background: rgba(255,255,255,.04);
+}
+.pg-search-spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid rgba(0,212,112,.15);
+  border-top-color: #00d470;
+  animation: pgSpin 0.9s linear infinite;
+}
+@keyframes pgSpin {
+  to { transform: rotate(360deg); }
+}
+.pg-searching-name {
+  color: rgba(255,255,255,.35) !important;
+}
+
+/* Opponent reveal animation */
+.pg-avatar-reveal {
+  animation: pgReveal 0.4s ease-out;
+}
+@keyframes pgReveal {
+  from { transform: scale(0.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+
+/* Progress bar */
+.pg-progress-wrap {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+}
+.pg-progress-bar {
+  flex: 1; height: 4px; background: rgba(255,255,255,.1); border-radius: 4px; overflow: hidden;
+}
+.pg-bar-fill {
+  height: 100%; width: 0; background: #00d470; border-radius: 4px;
+  transition: width .05s linear;
+  box-shadow: 0 0 8px rgba(0,212,112,.5);
+}
+.pg-counter {
+  font-size: 18px; font-weight: 900; color: #00d470;
+  width: 24px; text-align: center; flex-shrink: 0;
+}

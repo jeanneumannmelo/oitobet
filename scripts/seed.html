@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Seed Bots — Oitobet</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0a0818; color: #eee; padding: 32px; max-width: 600px; margin: auto; }
+  h1 { color: #f0c040; margin-bottom: 6px; }
+  p  { color: #aaa; font-size: 13px; margin-bottom: 24px; }
+  button { background: linear-gradient(135deg,#c87800,#f0c000); color: #000; font-weight: 800;
+           border: none; padding: 14px 32px; border-radius: 10px; cursor: pointer; font-size: 15px; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log { margin-top: 24px; background: #111; border-radius: 8px; padding: 16px;
+         font-size: 12px; font-family: monospace; max-height: 400px; overflow-y: auto; }
+  .ok  { color: #80ff80; }
+  .err { color: #ff8080; }
+  .inf { color: #aaa; }
+</style>
+</head>
+<body>
+<h1>🎱 Seed de Bots — Oitobet</h1>
+<p>Clique para cadastrar 500 bots brasileiros na coleção <code>bots</code> do Firestore.<br>
+   Execute uma única vez. Se rodar duas vezes, vai duplicar os bots.</p>
+<button id="btn" onclick="run()">▶ Iniciar Seed (500 bots)</button>
+<div id="log"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, writeBatch, doc, Timestamp }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInAnonymously }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const cfg = {
+  apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
+  authDomain: "oitobet-brasil.firebaseapp.com",
+  projectId: "oitobet-brasil",
+};
+const app  = initializeApp(cfg);
+const db   = getFirestore(app);
+const auth = getAuth(app);
+
+const FIRST = [
+  'Lucas','Gabriel','Matheus','Pedro','João','Rafael','Guilherme','Felipe',
+  'Eduardo','André','Rodrigo','Diego','Thiago','Bruno','Leonardo','Victor',
+  'Carlos','Daniel','Alexandre','Leandro','Fernanda','Amanda','Camila','Mariana',
+  'Juliana','Beatriz','Letícia','Gabriela','Ana','Larissa','Patricia','Viviane',
+  'Renata','Vanessa','Natalia','Bianca','Aline','Priscila','Luana','Sabrina',
+  'Arthur','Henrique','Igor','Samuel','Luis','Marcelo','Claudio','Fábio',
+  'Davi','Enzo','Lorenzo','Cauã','Kaique','Vinícius','Théo','Giovanna',
+  'Sofia','Isabella','Alice','Laura','Luiza','Valentina','Helena','Yasmin',
+];
+const LAST = [
+  'Silva','Santos','Oliveira','Souza','Lima','Pereira','Costa','Ferreira',
+  'Rodrigues','Almeida','Nascimento','Carvalho','Araújo','Ribeiro','Martins',
+  'Gomes','Barbosa','Rocha','Cardoso','Correia','Mendes','Nunes','Castro',
+  'Cunha','Teixeira','Moreira','Pinto','Cavalcante','Dias','Borges',
+  'Freitas','Monteiro','Lopes','Ramos','Leal','Machado','Cruz','Azevedo',
+];
+const CITIES = [
+  'São Paulo','Rio de Janeiro','Belo Horizonte','Salvador','Fortaleza',
+  'Curitiba','Manaus','Recife','Porto Alegre','Belém','Goiânia','Guarulhos',
+  'Campinas','São Luís','Maceió','Natal','Teresina','Campo Grande',
+  'João Pessoa','Ribeirão Preto','Aracaju','Cuiabá','Florianópolis',
+  'Vila Velha','Santos','Mauá','Osasco','Joinville','Contagem',
+];
+const NICK_PREFIX = [
+  'Sniper','Shark','King','Dark','Flash','Shadow','Wolf','Fire','Ice','Beast',
+  'Crack','Mestre','Lenda','Caçador','Cobra','Touro','Tigre','Falcão','Dragão',
+  'Brabo','Fera','Canhão','Fenômeno','Craque','Maluco','Astro','Rei','Campeão',
+  'Pro','Elite','xX','Mr','DrPool','Top','Furioso','Certeiro','Sinuca','Bolão',
+];
+const NICK_SUFFIX = [
+  'BR','420','007','SP','RJ','99','2k','Pro','God','777','XD','123','HD',
+  'Gamer','Top','Real','Oficial','Jr','Master','One','Max','Ultra','Wild',
+  'BR2','Loko','Insano','Doido','Maneiro','Foda','Brabo','Véi','Mano',
+];
+
+function rnd(a) { return a[Math.floor(Math.random()*a.length)]; }
+function rndInt(lo,hi) { return Math.floor(Math.random()*(hi-lo+1))+lo; }
+
+function makeNick(firstName) {
+  const style = rndInt(0,3);
+  if (style === 0) return `${rnd(NICK_PREFIX)}${rnd(NICK_SUFFIX)}`;
+  if (style === 1) return `${firstName}${rnd(NICK_SUFFIX)}`;
+  if (style === 2) return `${rnd(NICK_PREFIX)}_${firstName}`;
+  return `${firstName}${rndInt(10,999)}`;
+}
+
+function makeBots(n) {
+  const bots = [];
+  for (let i = 0; i < n; i++) {
+    const wins   = rndInt(10,600);
+    const losses = rndInt(5,400);
+    const diff   = rnd([1,1,2,2,3]); // weighted toward easier
+    const firstName = rnd(FIRST);
+    bots.push({
+      name:       `${firstName} ${rnd(LAST)}`,
+      nickname:   makeNick(firstName),
+      location:   rnd(CITIES),
+      flag:       '🇧🇷',
+      wins,
+      losses,
+      level:      Math.min(10, Math.ceil(wins/50)),
+      xp:         wins*15 + losses*5,
+      difficulty: diff,
+      avatar:     rndInt(0,15),
+      createdAt:  Timestamp.now(),
+    });
+  }
+  return bots;
+}
+
+function log(msg, cls='inf') {
+  const div = document.getElementById('log');
+  div.innerHTML += `<div class="${cls}">${msg}</div>`;
+  div.scrollTop = div.scrollHeight;
+}
+
+window.run = async function() {
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  document.getElementById('log').innerHTML = '';
+  log('🔐 Autenticando anonimamente…');
+  try {
+    await signInAnonymously(auth);
+    log('✔ Autenticado.', 'ok');
+  } catch(e) {
+    log(`✖ Erro de auth: ${e.message}`, 'err');
+    log('Habilite "Anonymous" em Firebase → Authentication → Sign-in methods', 'err');
+    btn.disabled = false;
+    return;
+  }
+
+  const bots = makeBots(500);
+  const botsRef = collection(db, 'bots');
+  const CHUNK = 499; // Firestore batch limit
+  let total = 0;
+
+  for (let i = 0; i < bots.length; i += CHUNK) {
+    const chunk = bots.slice(i, i+CHUNK);
+    const batch = writeBatch(db);
+    chunk.forEach(b => batch.set(doc(botsRef), b));
+    try {
+      await batch.commit();
+      total += chunk.length;
+      log(`✔ Lote ${Math.ceil((i+1)/CHUNK)}: ${total}/${bots.length} bots enviados`, 'ok');
+    } catch(e) {
+      log(`✖ Erro no lote: ${e.message}`, 'err');
+      log('Verifique as regras do Firestore (devem permitir escrita por auth anônimo).', 'err');
+      btn.disabled = false;
+      return;
+    }
+  }
+  log(`🎱 Seed completo! ${total} bots na coleção "bots".`, 'ok');
+  btn.textContent = '✔ Seed concluído!';
+};
+</script>
+</body>
+</html>

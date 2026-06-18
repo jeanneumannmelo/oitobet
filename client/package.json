@@ -1,0 +1,17 @@
+{
+  "name": "8ball-pool-client",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.2",
+    "firebase": "^10.8.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
