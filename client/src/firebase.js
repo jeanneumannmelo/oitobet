@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, browserLocalPersistence, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { initializeAuth, browserLocalPersistence, browserPopupRedirectResolver, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
@@ -16,6 +16,7 @@ const app = initializeApp(firebaseConfig);
 // Necessário para Safari iOS (ITP bloqueia storage cross-origin com IndexedDB)
 export const auth = initializeAuth(app, {
   persistence: browserLocalPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
 });
 export const db = getFirestore(app);
 
