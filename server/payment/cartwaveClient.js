@@ -165,22 +165,46 @@ export async function diagPixEndpoints() {
     } catch (e) { getResults[path] = { error: e.message }; }
   }
 
+  // Also try alternative base URLs
+  const altBases = [
+    'https://pix.cartwavehub.com.br',
+    'https://finance.cartwavehub.com.br',
+    'https://api.cartwavehub.com.br',
+  ];
+  const altBaseResults = {};
+  for (const base of altBases) {
+    if (base === BASE_URL) continue;
+    try {
+      const r = await proxiedFetch(`${base}/v2/finance/create-pix-copy-and-paste-web-simplified`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: postBody,
+      });
+      const text = await r.text();
+      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 200); }
+      altBaseResults[base] = { status: r.status, body: parsed };
+    } catch (e) { altBaseResults[base] = { error: e.message }; }
+  }
+
   const candidates = [
     '/v2/finance/create-pix-copy-and-paste-web-simplified',
-    '/v2/finance/create-pix-copy-paste-web-simplified',
-    '/v2/finance/create-pix-copy-and-paste-web-simplified/',
+    '/v2/finance/create-pix-copy-and-paste-simplified',
+    '/v2/finance/create-pix-copy-paste-simplified',
+    '/v2/finance/create-pix-qrcode',
+    '/v2/finance/create-pix-qr-code',
+    '/v2/finance/generate-pix',
+    '/v2/finance/gerar-cobranca-pix',
+    '/v2/finance/create-pix-cob',
+    '/v2/finance/create-bill-pix',
     '/v2/finance/create-pix',
-    '/v2/finance/pix',
-    '/v2/finance/create-charge',
-    '/v2/finance/charge',
-    '/v2/finance/pix-charge',
-    '/v2/transaction/pix',
-    '/v2/transaction/charge',
-    '/v1/finance/create-pix-copy-and-paste-web-simplified',
-    '/api/pix/charge',
-    '/v2/pix/create',
-    '/v2/pix',
-    '/finance/create-pix-copy-and-paste-web-simplified',
+    '/v2/finance/create-cobranca',
+    '/v2/payment/pix',
+    '/v2/billing/pix',
+    '/v2/charge/pix',
+    '/v2/cobr/pix',
+    '/v1/finance/create-pix-copy-and-paste-simplified',
+    '/pix/create',
+    '/pix/charge',
   ];
 
   const postResults = {};
@@ -202,5 +226,5 @@ export async function diagPixEndpoints() {
     } catch (e) { postResults[path] = { error: e.message }; }
   }
 
-  return { token_ok: true, getProbes: getResults, postResults };
+  return { token_ok: true, getProbes: getResults, altBases: altBaseResults, postResults };
 }
