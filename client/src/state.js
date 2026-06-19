@@ -83,6 +83,9 @@ export const S = {
   // ── Loop ──
   tick: 0,
 
+  // ── Table theme ──
+  tableTheme: 0,      // 0-6, picked randomly each game
+
   // ── Turn popup ──
   turnPopup: 0,       // countdown 120→0; triggers mini popup when human's turn starts
   _prevTurn: -1,      // tracks previous turn for change detection

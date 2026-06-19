@@ -6,6 +6,7 @@ export function mkBall(id, x, y) {
 
 export function initBalls() {
   const { PX, PY, PW, PH, BR } = S;
+  S.tableTheme = Math.floor(Math.random() * 7);
   S.balls = [];
   S.balls.push(mkBall(0, PX + PW * 0.26, PY + PH / 2));
   const rx = PX + PW * 0.735, ry = PY + PH / 2;
