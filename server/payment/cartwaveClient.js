@@ -138,6 +138,14 @@ export async function registerWebhook(url, typeWebhook) {
   });
 }
 
+// Promise.race-based timeout compatible with all Node.js versions
+function fetchT(url, opts, ms = 8000) {
+  return Promise.race([
+    proxiedFetch(url, opts),
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout_${ms}ms`)), ms)),
+  ]);
+}
+
 // Diagnostic: probe multiple PIX endpoint candidates using existing proxy+auth
 export async function diagPixEndpoints() {
   const token = await getToken();
@@ -152,46 +160,34 @@ export async function diagPixEndpoints() {
     tag: 'test_pix_probe_' + Date.now(),
   });
 
-  // Probe GET on API root paths to discover available routes
-  const getProbes = ['/v2/', '/openapi.json', '/docs', '/swagger/index.html'];
-  const getResults = {};
-  for (const path of getProbes) {
-    try {
-      const r = await proxiedFetch(`${BASE_URL}${path}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const text = await r.text();
-      getResults[path] = { status: r.status, body: text.slice(0, 200) };
-    } catch (e) { getResults[path] = { error: e.message.slice(0, 80) }; }
-  }
-
-  const altBaseResults = {};
+  // Sanity check: verify auth POST still works from this function
+  let authCheck;
+  try {
+    const ar = await fetchT(`${BASE_URL}/v2/finance/auth-token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET }),
+    });
+    const at = await ar.text();
+    authCheck = { status: ar.status, has_token: at.includes('access_token') };
+  } catch(e) { authCheck = { error: e.message, cause: e.cause?.code }; }
 
   const candidates = [
     '/v2/finance/create-pix-copy-and-paste-web-simplified',
     '/v2/finance/create-pix-copy-and-paste-simplified',
-    '/v2/finance/create-pix-copy-paste-simplified',
     '/v2/finance/create-pix-qrcode',
-    '/v2/finance/create-pix-qr-code',
     '/v2/finance/generate-pix',
-    '/v2/finance/gerar-cobranca-pix',
     '/v2/finance/create-pix-cob',
-    '/v2/finance/create-bill-pix',
     '/v2/finance/create-pix',
-    '/v2/finance/create-cobranca',
     '/v2/payment/pix',
     '/v2/billing/pix',
-    '/v2/charge/pix',
-    '/v2/cobr/pix',
-    '/v1/finance/create-pix-copy-and-paste-simplified',
     '/pix/create',
-    '/pix/charge',
   ];
 
   const postResults = {};
   for (const path of candidates) {
     try {
-      const r = await proxiedFetch(`${BASE_URL}${path}`, {
+      const r = await fetchT(`${BASE_URL}${path}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -201,11 +197,11 @@ export async function diagPixEndpoints() {
       });
       const text = await r.text();
       let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 400); }
+      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 300); }
       postResults[path] = { status: r.status, body: parsed };
-      if (r.status !== 404) break; // stop at first non-404
-    } catch (e) { postResults[path] = { error: e.message, cause: e.cause?.message || e.cause?.code || String(e.cause || '') }; }
+      if (r.status !== 404) break;
+    } catch (e) { postResults[path] = { error: e.message, cause: e.cause?.message || e.cause?.code || '' }; }
   }
 
-  return { token_ok: true, getProbes: getResults, altBases: altBaseResults, postResults };
+  return { token_ok: true, authCheck, postResults };
 }
