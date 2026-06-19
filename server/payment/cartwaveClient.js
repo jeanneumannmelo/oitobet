@@ -204,7 +204,7 @@ export async function diagPixEndpoints() {
       try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 400); }
       postResults[path] = { status: r.status, body: parsed };
       if (r.status !== 404) break; // stop at first non-404
-    } catch (e) { postResults[path] = { error: e.message }; }
+    } catch (e) { postResults[path] = { error: e.message, cause: e.cause?.message || e.cause?.code || String(e.cause || '') }; }
   }
 
   return { token_ok: true, getProbes: getResults, altBases: altBaseResults, postResults };
