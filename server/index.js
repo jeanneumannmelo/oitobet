@@ -27,8 +27,13 @@ const io = new Server(http, {
 // Temp diagnostics — mounted before all routes so static serving doesn't catch them
 app.get('/_diag/ip', async (_req, res) => {
   try {
-    const r = await fetch('https://api.ipify.org?format=json');
-    res.json(await r.json());
+    const { ProxyAgent, fetch: undiciFetch } = await import('undici');
+    const fixieUrl = process.env.FIXIE_URL;
+    const agent = fixieUrl ? new ProxyAgent(fixieUrl) : null;
+    const r = agent
+      ? await undiciFetch('https://api.ipify.org?format=json', { dispatcher: agent })
+      : await fetch('https://api.ipify.org?format=json');
+    res.json({ ...(await r.json()), via_fixie: !!agent, fixie_configured: !!fixieUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/_diag/cartwave', async (_req, res) => {

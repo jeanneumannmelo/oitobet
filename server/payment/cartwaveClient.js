@@ -1,11 +1,17 @@
 import crypto from 'crypto';
+import { ProxyAgent, fetch as undiciFetch } from 'undici';
 
 const BASE_URL     = process.env.CARTWAVE_BASE_URL     || 'https://api.cartwavehub.com.br';
-const CLIENT_ID    = process.env.CARTWAVE_EMAIL;         // email = client_id
-const CLIENT_SECRET= process.env.CARTWAVE_PASSWORD;      // password = client_secret
+const CLIENT_ID    = process.env.CARTWAVE_EMAIL;
+const CLIENT_SECRET= process.env.CARTWAVE_PASSWORD;
 const HMAC_SECRET  = process.env.CARTWAVE_HMAC_SECRET;
 const ACCOUNT_BRANCH = process.env.CARTWAVE_ACCOUNT_BRANCH || '0001';
 const ACCOUNT_NUMBER = process.env.CARTWAVE_ACCOUNT_NUMBER || '7004635';
+
+// Route CartWave calls through Fixie static IP proxy when available
+const _proxyAgent = process.env.FIXIE_URL ? new ProxyAgent(process.env.FIXIE_URL) : null;
+const proxiedFetch = (url, opts = {}) =>
+  _proxyAgent ? undiciFetch(url, { ...opts, dispatcher: _proxyAgent }) : fetch(url, opts);
 
 let _token = null;
 let _tokenExpiresAt = 0;
@@ -13,7 +19,7 @@ let _tokenExpiresAt = 0;
 async function getToken() {
   if (_token && Date.now() < _tokenExpiresAt) return _token;
 
-  const res = await fetch(`${BASE_URL}/v2/finance/auth-token/`, {
+  const res = await proxiedFetch(`${BASE_URL}/v2/finance/auth-token/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET }),
@@ -69,7 +75,7 @@ async function cartwaveRequest(method, path, body) {
     headers['hmac'] = hmacSign(bodyStr);
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await proxiedFetch(`${BASE_URL}${path}`, {
     method,
     headers,
     body: bodyStr,
