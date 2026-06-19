@@ -34,17 +34,18 @@ router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (
     });
 
     // Persist CartWave transaction id and pix code
+    // Response fields per CartWave docs: id, pix_copy_and_paste, image_base64, image_url, status
     await txRef.update({
-      cartwaveTxId: pix.id || pix.txid || pix.transaction_id || '',
-      pixCode: pix.copy_and_paste || pix.qr_code || pix.pix_code || '',
-      expiresAt: pix.expires_at || pix.expiration || null,
+      cartwaveTxId: String(pix.id || ''),
+      pixCode: pix.pix_copy_and_paste || pix.copy_and_paste || '',
+      expiresAt: pix.expiration_date || null,
     });
 
     res.json({
       txId: txRef.id,
-      pixCode: pix.copy_and_paste || pix.qr_code || pix.pix_code || '',
-      qrCodeUrl: pix.qr_code_url || pix.image_url || null,
-      expiresAt: pix.expires_at || pix.expiration || null,
+      pixCode: pix.pix_copy_and_paste || pix.copy_and_paste || '',
+      qrCodeUrl: pix.image_url || null,
+      expiresAt: pix.expiration_date || null,
     });
   } catch (e) {
     console.error('[deposit]', e.message);
@@ -100,7 +101,7 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
 
     let cashout;
     try {
-      cashout = await createCashout({ amount, pixKey, pixKeyType, externalId: txRef.id });
+      cashout = await createCashout({ amount, pixKey, externalId: txRef.id });
     } catch (e) {
       // If CartWave fails, refund full debit (amount + fee)
       await userRef.update({
@@ -113,7 +114,7 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
     }
 
     await txRef.update({
-      cartwaveTxId: cashout.id || cashout.transaction_id || '',
+      cartwaveTxId: String(cashout.id || cashout.uuid || ''),
       status: cashout.status || 'processing',
     });
 
@@ -145,23 +146,41 @@ router.post('/webhooks/cartwave', async (req, res) => {
     return res.status(400).json({ error: 'Body inválido' });
   }
 
-  const cartwaveTxId = event.id || event.transaction_id;
-  const eventType = event.event || event.type || '';
-  const amount = Number(event.amount || 0);
+  // CartWave event names per docs:
+  // deposit confirmed: QR_CODE_COPY_AND_PASTE_PAID or PIX_CASHIN_RECEIVED
+  // cashout success:  PIX_CASHOUT_SUCCESS
+  // cashout failed:   PIX_CASHOUT_ERROR
+  const eventType = event.type || event.event || '';
+  const tag = event.tag || event.data?.tag || '';           // our Firestore txId
+  const amount = Number(event.amount || event.data?.amount || 0);
+
+  console.log(`[webhook] event=${eventType} tag=${tag} amount=${amount}`);
 
   try {
-    // Idempotency: find transaction by cartwaveTxId
-    const q = await adminDb.collection('transactions')
-      .where('cartwaveTxId', '==', cartwaveTxId)
-      .limit(1)
-      .get();
-
-    if (q.empty) {
-      console.warn('[webhook] unknown cartwaveTxId:', cartwaveTxId);
-      return res.status(200).json({ ok: true }); // Don't error — CartWave may retry
+    // Locate our transaction by tag (externalId we sent during creation)
+    let txDoc = null;
+    if (tag) {
+      const snap = await adminDb.collection('transactions').doc(tag).get();
+      if (snap.exists) txDoc = snap;
     }
 
-    const txDoc = q.docs[0];
+    // Fallback: search by cartwaveTxId if tag not present
+    if (!txDoc) {
+      const cartwaveTxId = String(event.id || event.transaction_id || '');
+      if (cartwaveTxId) {
+        const q = await adminDb.collection('transactions')
+          .where('cartwaveTxId', '==', cartwaveTxId)
+          .limit(1)
+          .get();
+        if (!q.empty) txDoc = q.docs[0];
+      }
+    }
+
+    if (!txDoc) {
+      console.warn('[webhook] transaction not found for event:', eventType, tag);
+      return res.status(200).json({ ok: true }); // Return 200 so CartWave doesn't retry forever
+    }
+
     const tx = txDoc.data();
 
     // Idempotency guard
@@ -171,7 +190,7 @@ router.post('/webhooks/cartwave', async (req, res) => {
 
     const userRef = adminDb.collection('users').doc(tx.uid);
 
-    if (eventType === 'pix.received' || eventType === 'payment.received') {
+    if (eventType === 'QR_CODE_COPY_AND_PASTE_PAID' || eventType === 'PIX_CASHIN_RECEIVED') {
       await adminDb.runTransaction(async t => {
         t.update(userRef, {
           balance: FieldValue.increment(amount),
@@ -179,13 +198,13 @@ router.post('/webhooks/cartwave', async (req, res) => {
         });
         t.update(txDoc.ref, { status: 'completed', completedAt: FieldValue.serverTimestamp() });
       });
-      console.log(`[webhook] pix.received uid=${tx.uid} amount=${amount}`);
+      console.log(`[webhook] deposit confirmed uid=${tx.uid} amount=${amount}`);
 
-    } else if (eventType === 'cashout.completed' || eventType === 'withdrawal.completed') {
+    } else if (eventType === 'PIX_CASHOUT_SUCCESS') {
       await txDoc.ref.update({ status: 'completed', completedAt: FieldValue.serverTimestamp() });
-      console.log(`[webhook] cashout.completed uid=${tx.uid} amount=${amount}`);
+      console.log(`[webhook] cashout success uid=${tx.uid} amount=${amount}`);
 
-    } else if (eventType === 'cashout.failed' || eventType === 'withdrawal.failed') {
+    } else if (eventType === 'PIX_CASHOUT_ERROR' || eventType === 'PIX_CASHOUT_CANCELED') {
       // Estorno: refund amount + fee (totalDebit)
       const totalDebit = tx.totalDebit || (tx.amount + (tx.fee || 0));
       await adminDb.runTransaction(async t => {
@@ -195,7 +214,7 @@ router.post('/webhooks/cartwave', async (req, res) => {
         });
         t.update(txDoc.ref, { status: 'failed', failedAt: FieldValue.serverTimestamp() });
       });
-      console.log(`[webhook] cashout.failed — refund uid=${tx.uid} amount=${amount}`);
+      console.log(`[webhook] cashout failed — refund uid=${tx.uid} amount=${totalDebit}`);
     } else {
       console.log(`[webhook] unhandled event: ${eventType}`);
     }
