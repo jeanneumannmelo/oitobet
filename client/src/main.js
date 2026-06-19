@@ -67,7 +67,7 @@ async function handleGameEnd(winnerIdx) {
     : (winnerIdx === 0);
 
   try {
-    await finalizeBotMatch({ uid: user.uid, playerWon: isHumanWin, betAmount: S.betAmount });
+    await finalizeBotMatch({ playerWon: isHumanWin, betAmount: S.betAmount });
     refreshHome();
   } catch(e) {
     console.error('[handleGameEnd]', e);

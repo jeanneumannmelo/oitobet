@@ -226,4 +226,74 @@ router.post('/webhooks/cartwave', async (req, res) => {
   }
 });
 
+// ── POST /api/game/debit-bet ──────────────────────────────────────────────────
+// Debits the bet amount before a game starts. Server-side to prevent cheating.
+router.post('/game/debit-bet', verifyFirebaseToken, async (req, res) => {
+  const betAmount = Number(req.body?.betAmount);
+  if (!betAmount || betAmount <= 0 || betAmount > 10000) {
+    return res.status(400).json({ error: 'Valor de aposta inválido.' });
+  }
+
+  const userRef = adminDb.collection('users').doc(req.uid);
+  try {
+    await adminDb.runTransaction(async t => {
+      const snap = await t.get(userRef);
+      if (!snap.exists) throw new Error('Usuário não encontrado');
+      const balance = snap.data()?.balance || 0;
+      if (balance < betAmount) throw new Error('INSUFFICIENT_BALANCE');
+      t.update(userRef, { balance: FieldValue.increment(-betAmount) });
+    });
+    res.json({ success: true });
+  } catch (e) {
+    if (e.message === 'INSUFFICIENT_BALANCE') return res.status(400).json({ error: 'Saldo insuficiente.' });
+    console.error('[debit-bet]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ── POST /api/game/finalize ───────────────────────────────────────────────────
+// Called after a bot game ends. Updates balance, wins/losses, XP, daily stats.
+router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
+  const { playerWon, betAmount = 0, xpGain = 50 } = req.body || {};
+  if (typeof playerWon !== 'boolean') return res.status(400).json({ error: 'playerWon obrigatório.' });
+
+  const today = new Date().toISOString().split('T')[0];
+  const userRef = adminDb.collection('users').doc(req.uid);
+
+  try {
+    const snap = await userRef.get();
+    const data = snap.data() || {};
+    const isSameDay = data.dailyDate === today;
+    const updates = {};
+
+    if (playerWon) {
+      updates.wins = FieldValue.increment(1);
+      updates.xp = FieldValue.increment(xpGain);
+      if (betAmount > 0) {
+        updates.balance = FieldValue.increment(betAmount * 2);
+        updates.totalEarned = FieldValue.increment(betAmount * 2);
+      }
+      updates.dailyDate = today;
+      updates.dailyWins = isSameDay ? FieldValue.increment(1) : 1;
+      updates.dailyEarnings = betAmount > 0
+        ? (isSameDay ? FieldValue.increment(betAmount) : betAmount)
+        : (isSameDay ? data.dailyEarnings || 0 : 0);
+    } else {
+      updates.losses = FieldValue.increment(1);
+      updates.xp = FieldValue.increment(10);
+      if (!isSameDay) {
+        updates.dailyDate = today;
+        updates.dailyWins = 0;
+        updates.dailyEarnings = 0;
+      }
+    }
+
+    await userRef.update(updates);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[game/finalize]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 export default router;

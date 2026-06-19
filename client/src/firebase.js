@@ -101,14 +101,34 @@ export function updateProfile(uid, data) {
   return updateDoc(doc(db, 'users', uid), data);
 }
 
-// ── Balance / wallet ─────────────────────────────────────────────────────────
+// ── Balance / wallet (server-side via Admin SDK) ──────────────────────────────
 
-export function creditBalance(uid, amount) {
-  return updateDoc(doc(db, 'users', uid), { balance: increment(amount) });
+async function _gameApiCall(path, body) {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error('Não autenticado');
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Erro');
+  return data;
 }
 
-export function debitBalance(uid, amount) {
-  return updateDoc(doc(db, 'users', uid), { balance: increment(-amount) });
+// Deducts bet before a game — server validates balance atomically
+export function debitBalance(_uid, betAmount) {
+  return _gameApiCall('/api/game/debit-bet', { betAmount });
+}
+
+// Finalizes a bot/solo match — server credits prize, updates stats
+export function finalizeBotMatch({ playerWon, betAmount }) {
+  return _gameApiCall('/api/game/finalize', { playerWon, betAmount });
+}
+
+// Legacy: kept for compatibility but no longer used for real writes
+export function creditBalance(uid, amount) {
+  return updateDoc(doc(db, 'users', uid), { balance: increment(amount) });
 }
 
 // Withdrawal request (reviewed manually or via webhook)
@@ -117,7 +137,7 @@ export function requestWithdrawal(uid, amount, pixKey) {
     uid,
     amount,
     pixKey,
-    status: 'pending',   // pending | approved | rejected
+    status: 'pending',
     createdAt: serverTimestamp(),
   });
 }

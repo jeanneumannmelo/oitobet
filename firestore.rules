@@ -5,13 +5,14 @@ service cloud.firestore {
     // ── Users ────────────────────────────────────────────────────────────────
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      // Allow all updates except financial fields (balance, totalDeposited, totalWithdrawn)
-      // which are managed exclusively by the server via Admin SDK
-      allow write: if request.auth != null && request.auth.uid == uid
+      // Financial fields (balance, totalDeposited, totalWithdrawn, totalEarned)
+      // are managed exclusively by the server via Admin SDK — never by the client
+      allow update: if request.auth != null && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['balance', 'totalDeposited', 'totalWithdrawn']);
-      // Allow creating new user docs (first login / registration)
-      allow create: if request.auth != null && request.auth.uid == uid;
+           .hasAny(['balance', 'totalDeposited', 'totalWithdrawn', 'totalEarned']);
+      // New user doc creation (registration / ensureUserDoc) — balance must start at 0
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.balance == 0;
     }
 
     // ── Bots ─────────────────────────────────────────────────────────────────
