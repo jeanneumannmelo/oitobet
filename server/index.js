@@ -43,12 +43,49 @@ app.get('/_diag/cartwave', async (_req, res) => {
   } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 app.get('/_diag/pix', async (_req, res) => {
+  // Try several possible PIX endpoint variations to find the correct one
+  const { ProxyAgent, fetch: undiciFetch } = await import('undici');
+  const fixieUrl = process.env.FIXIE_URL;
+  const agent = fixieUrl ? new ProxyAgent(fixieUrl) : null;
+  const proxied = (url, opts = {}) =>
+    agent ? undiciFetch(url, { ...opts, dispatcher: agent }) : fetch(url, opts);
+
+  const BASE_URL = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
+  // First get a token
+  let token;
   try {
-    const { createPixCharge } = await import('./payment/cartwaveClient.js');
-    const externalId = 'test_' + Date.now();
-    const result = await createPixCharge({ amount: 10, externalId, description: 'Teste PIX OitoBet' });
-    res.json({ ok: true, externalId, result });
-  } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+    const tr = await proxied(`${BASE_URL}/v2/finance/auth-token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: process.env.CARTWAVE_EMAIL, client_secret: process.env.CARTWAVE_PASSWORD }),
+    });
+    const td = await tr.json();
+    token = td.access_token;
+  } catch (e) { return res.status(502).json({ ok: false, step: 'auth', error: e.message }); }
+
+  // Probe candidate endpoints with a minimal GET to see which ones exist (200/405 vs 404)
+  const candidates = [
+    '/v2/finance/create-pix-copy-and-paste-web-simplified',
+    '/v2/finance/pix',
+    '/v2/finance/create-pix',
+    '/v2/finance/pix-charge',
+    '/v2/pix/create',
+    '/v2/pix/create-pix-copy-and-paste',
+    '/v2/finance/charge',
+    '/v2/finance/create-charge-pix',
+  ];
+  const probeResults = {};
+  await Promise.all(candidates.map(async path => {
+    try {
+      const r = await proxied(`${BASE_URL}${path}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      });
+      const text = await r.text();
+      probeResults[path] = { status: r.status, snippet: text.slice(0, 120) };
+    } catch (e) { probeResults[path] = { error: e.message }; }
+  }));
+  res.json({ ok: true, token_ok: !!token, probeResults });
 });
 
 app.use(express.json({
