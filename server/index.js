@@ -23,18 +23,14 @@ const io = new Server(http, {
   transports: ['websocket', 'polling'],
 });
 
-// Raw body capture for HMAC webhook verification (must be before JSON parser)
-app.use((req, _res, next) => {
-  if (req.path === '/api/webhooks/cartwave') {
-    let chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => { req.rawBody = Buffer.concat(chunks).toString('utf8'); next(); });
-  } else {
-    next();
-  }
-});
-
-app.use(express.json());
+// Capture raw body for HMAC webhook verification via express.json verify hook
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    if (req.path === '/api/webhooks/cartwave') {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 app.use('/api', paymentRoutes);
 
 // Serve frontend build in production
