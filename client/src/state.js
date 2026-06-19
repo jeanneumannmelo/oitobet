@@ -83,6 +83,10 @@ export const S = {
   // ── Loop ──
   tick: 0,
 
+  // ── Turn popup ──
+  turnPopup: 0,       // countdown 120→0; triggers mini popup when human's turn starts
+  _prevTurn: -1,      // tracks previous turn for change detection
+
   // ── Match finalization ──
   gameEndHandled: false,
 };

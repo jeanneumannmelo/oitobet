@@ -11,7 +11,7 @@ import { drawBall } from './render/balls.js';
 import { drawCue } from './render/cue.js';
 import { drawHUD, initLogoImg } from './render/hud.js';
 import { drawPowerBar, drawVitoria } from './render/screen.js';
-import { drawNetAnims, drawCelebration, drawPocketedSidebars } from './render/effects.js';
+import { drawNetAnims, drawCelebration, drawPocketedSidebars, drawTurnPopup } from './render/effects.js';
 import { initInput } from './input/input.js';
 import { initFeltPat } from './render/table.js';
 import { initBgPat } from './render/screen.js';
@@ -207,6 +207,15 @@ function loop() {
     handleGameEnd(S.vencedor);
   }
 
+  // Detect turn change → trigger "Sua Vez" popup for human player
+  if (S.turn !== S._prevTurn) {
+    S._prevTurn = S.turn;
+    const isHumanTurn = S.mode === 'online' ? S.turn === S.myIdx : S.turn !== S.BOT;
+    if (isHumanTurn && (S.estado === 'mira' || S.estado === 'ballInHand') && S.estado !== 'vitoria') {
+      S.turnPopup = 120;
+    }
+  }
+
   try {
     drawBg();
     drawPocketedSidebars();
@@ -216,6 +225,7 @@ function loop() {
     drawNetAnims();
     drawHUD();
     drawPowerBar();
+    drawTurnPopup();
     drawCelebration();
     if (S.estado === 'vitoria') drawVitoria();
   } catch(e) {

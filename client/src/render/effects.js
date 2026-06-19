@@ -2,16 +2,18 @@ import { ctx } from '../canvas.js';
 import { S, BHEX } from '../state.js';
 import { rr, lighter, darker } from '../utils.js';
 
+// ── Celebration ───────────────────────────────────────────────────────────────
+
 export function spawnCelebration(px, py) {
   S.celebFrames = S.CELEB_TOTAL;
   S.celebParticles = [];
-  const colors = ['#ffe040','#ff8844','#44ff88','#44aaff','#ff44aa','#ffffff'];
-  for (let i = 0; i < 22; i++) {
-    const ang = Math.random() * Math.PI * 2, spd = 2 + Math.random() * 5;
+  const colors = ['#ffe040','#ff8844','#44ff88','#44aaff','#ff44aa','#ffffff','#ffcc00'];
+  for (let i = 0; i < 28; i++) {
+    const ang = Math.random() * Math.PI * 2, spd = 2.5 + Math.random() * 6;
     S.celebParticles.push({
       x: px, y: py,
-      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
-      r: 2 + Math.random() * 4,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 1.5,
+      r: 2 + Math.random() * 5,
       color: colors[Math.floor(Math.random() * colors.length)],
       life: 1,
     });
@@ -23,20 +25,24 @@ export function drawCelebration() {
   const t = S.celebFrames / S.CELEB_TOTAL;
   const alpha = t > 0.8 ? (1 - t) / 0.2 : t < 0.15 ? t / 0.15 : 1;
   S.celebParticles.forEach(p => {
-    p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.life = S.celebFrames / S.CELEB_TOTAL;
+    p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.vx *= 0.99;
+    p.life = S.celebFrames / S.CELEB_TOTAL;
     ctx.save(); ctx.globalAlpha = p.life * alpha;
+    ctx.shadowColor = p.color; ctx.shadowBlur = 8;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
     ctx.fillStyle = p.color; ctx.fill(); ctx.restore();
   });
   ctx.save(); ctx.globalAlpha = alpha;
-  ctx.shadowColor = 'rgba(255,220,0,0.9)'; ctx.shadowBlur = 24;
-  ctx.fillStyle = '#ffe040'; ctx.font = 'bold 38px Arial';
+  ctx.shadowColor = 'rgba(255,220,0,0.9)'; ctx.shadowBlur = 32;
+  ctx.fillStyle = '#ffe040'; ctx.font = `bold ${Math.round(S.PH * 0.1)}px Arial`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const bounce = Math.sin((1 - t) * Math.PI) * 12;
+  const bounce = Math.sin((1 - t) * Math.PI) * 14;
   ctx.fillText('INCRÍVEL! 🎱', S.PX + S.PW / 2, S.PY + S.PH / 2 - bounce);
   ctx.restore();
   S.celebFrames--;
 }
+
+// ── Net pocket animation ───────────────────────────────────────────────────────
 
 export function drawNetAnims() {
   const NET = 36;
@@ -72,6 +78,8 @@ export function drawNetAnims() {
     ctx.restore(); ctx.restore();
   }
 }
+
+// ── Pocketed ball sidebars ─────────────────────────────────────────────────────
 
 export function drawPocketedSidebars() {
   const sbR = 14, sbGap = 7, sbSpacing = sbR * 2 + sbGap;
@@ -150,4 +158,108 @@ export function drawPocketedSidebars() {
       ctx.fillText('?', scx, S.PY + S.PH / 2);
     }
   }
+}
+
+// ── Turn popup mini card ───────────────────────────────────────────────────────
+
+const POPUP_TOTAL = 120; // frames: 20 in + 60 hold + 40 out
+
+export function drawTurnPopup() {
+  if (S.turnPopup <= 0) return;
+  S.turnPopup--;
+
+  const t = S.turnPopup / POPUP_TOTAL;
+  // Fade in during first 20 frames, hold, fade out during last 40 frames
+  let alpha;
+  if (S.turnPopup > POPUP_TOTAL - 20) {
+    alpha = (POPUP_TOTAL - S.turnPopup) / 20;
+  } else if (S.turnPopup < 40) {
+    alpha = S.turnPopup / 40;
+  } else {
+    alpha = 1;
+  }
+
+  const cx = S.PX + S.PW / 2;
+  const cy = S.PY + S.PH / 2;
+  const pW = 220, pH = 90;
+  const px = cx - pW / 2, py = cy - pH / 2;
+
+  // Scale bounce: small → big → normal
+  const scaleT = Math.min(1, (POPUP_TOTAL - S.turnPopup) / 20);
+  const scale = 0.72 + 0.28 * (1 - Math.pow(1 - scaleT, 3));
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -cy);
+
+  // Drop shadow
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 8;
+  rr(px, py, pW, pH, 18); ctx.fillStyle = 'rgba(0,0,0,0.001)'; ctx.fill();
+  ctx.restore();
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(px, py, px, py + pH);
+  bg.addColorStop(0, '#0c2a18'); bg.addColorStop(1, '#071810');
+  rr(px, py, pW, pH, 18); ctx.fillStyle = bg; ctx.fill();
+
+  // Animated green border glow
+  const pulse = 0.7 + 0.3 * Math.sin(S.tick * 0.15);
+  ctx.strokeStyle = `rgba(0,212,112,${pulse * 0.9})`; ctx.lineWidth = 2;
+  ctx.shadowColor = `rgba(0,212,112,${pulse * 0.6})`; ctx.shadowBlur = 12;
+  rr(px, py, pW, pH, 18); ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Inner top bar — "SUA VEZ"
+  const barH = 38;
+  rr(px, py, pW, barH, 18);
+  ctx.beginPath();
+  ctx.moveTo(px + 18, py);
+  ctx.lineTo(px + pW - 18, py);
+  ctx.arcTo(px + pW, py, px + pW, py + 18, 18);
+  ctx.lineTo(px + pW, py + barH);
+  ctx.lineTo(px, py + barH);
+  ctx.arcTo(px, py, px + 18, py, 18);
+  ctx.closePath();
+  const hg = ctx.createLinearGradient(px, py, px + pW, py);
+  hg.addColorStop(0, 'rgba(0,180,90,0.85)'); hg.addColorStop(1, 'rgba(0,220,110,0.85)');
+  ctx.fillStyle = hg; ctx.fill();
+
+  // "SUA VEZ!" text
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${Math.round(pH * 0.28)}px Arial`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 4;
+  ctx.fillText('SUA VEZ!', cx, py + barH / 2);
+  ctx.shadowBlur = 0;
+
+  // Pool ball icon in lower section
+  const ballR = 14;
+  const ballX = cx - 20, ballY = py + barH + (pH - barH) / 2;
+
+  // Ball 8 mini
+  const bbg = ctx.createRadialGradient(ballX - 4, ballY - 5, 0, ballX, ballY, ballR);
+  bbg.addColorStop(0, '#555'); bbg.addColorStop(0.5, '#222'); bbg.addColorStop(1, '#111');
+  ctx.beginPath(); ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+  ctx.fillStyle = bbg; ctx.fill();
+  ctx.beginPath(); ctx.arc(ballX, ballY, ballR * 0.45, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill();
+  ctx.fillStyle = '#111'; ctx.font = `bold ${Math.round(ballR * 0.7)}px Arial`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('8', ballX, ballY + 0.5);
+  // Ball highlight
+  const bhi = ctx.createRadialGradient(ballX - ballR * 0.38, ballY - ballR * 0.42, 0, ballX, ballY, ballR);
+  bhi.addColorStop(0, 'rgba(255,255,255,0.75)'); bhi.addColorStop(0.4, 'rgba(255,255,255,0.15)'); bhi.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.beginPath(); ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2);
+  ctx.fillStyle = bhi; ctx.fill();
+
+  // "Atire!" text
+  ctx.fillStyle = 'rgba(180,240,200,0.9)';
+  ctx.font = `bold ${Math.round(pH * 0.2)}px Arial`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.fillText('Atire!', ballX + ballR + 8, ballY);
+
+  ctx.restore();
 }
