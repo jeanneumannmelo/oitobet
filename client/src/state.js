@@ -15,7 +15,7 @@ export const S = {
   BW: 900,
   sc: 1,
   isPortrait: false,
-  HH: 82, FW: 28, CW: 14, SB: 62, MG: 8,
+  HH: 96, FW: 28, CW: 14, SB: 62, MG: 8,
   TX: 0, TY: 0, TW: 0, TH: 0,
   IX: 0, IY: 0, IW: 0, IH: 0,
   PX: 0, PY: 0, PW: 0, PH: 0,
@@ -92,4 +92,13 @@ export const S = {
 
   // ── Match finalization ──
   gameEndHandled: false,
+
+  // ── Chips / shop ──
+  chips: 0,
+  equippedCue: 'basic',
+  ownedCues: ['basic'],
+  chipBet: 0,
+
+  // ── Player photos (preloaded Image objects, keyed by photoURL) ──
+  _photoCache: {},
 };

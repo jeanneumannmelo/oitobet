@@ -1,0 +1,28 @@
+.shop-overlay { position:fixed; top:0; left:0; width:100%; height:100%; z-index:200; background:rgba(5,7,15,0.97); display:flex; flex-direction:column; overflow-y:auto; }
+.shop-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
+.shop-title { font-size:20px; font-weight:700; color:#fff; }
+.shop-chips { display:flex; align-items:center; gap:8px; font-size:16px; font-weight:700; color:#f0c030; }
+.shop-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:20px; }
+@media(max-width:600px) { .shop-grid { grid-template-columns:repeat(2,1fr); } }
+.cue-card { background:#0e1020; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:14px; display:flex; flex-direction:column; gap:8px; transition:border-color 0.2s; }
+.cue-card:hover { border-color:rgba(255,255,255,0.2); }
+.cue-card.equipped { border-color:#f0c030; box-shadow:0 0 12px rgba(240,192,48,0.25); }
+.cue-preview { height:12px; border-radius:6px; width:100%; }
+.cue-name { font-size:14px; font-weight:700; color:#fff; }
+.cue-desc { font-size:11px; color:#7070a0; }
+.cue-stats { display:flex; flex-direction:column; gap:3px; }
+.stat-row { display:flex; align-items:center; gap:6px; font-size:10px; color:#a0a0c0; }
+.stat-label { width:56px; }
+.stat-stars { display:flex; gap:2px; }
+.star-fill { color:#f0c030; font-size:10px; }
+.star-empty { color:#2a2a40; font-size:10px; }
+.cue-price { font-size:12px; font-weight:700; color:#f0c030; }
+.cue-btn { padding:7px 0; border-radius:8px; font-size:12px; font-weight:700; border:none; cursor:pointer; width:100%; }
+.cue-btn.buy { background:#2060e0; color:#fff; }
+.cue-btn.buy.disabled { background:#1a2a50; color:#5060a0; cursor:not-allowed; }
+.cue-btn.equip { background:#c89020; color:#000; }
+.cue-btn.equipped-btn { background:#1a3a20; color:#40c060; cursor:default; }
+.cue-btn.buy:not(.disabled):hover { background:#3070f0; }
+.cue-btn.equip:hover { background:#e0a820; }
+.shop-close { background:none; border:1px solid rgba(255,255,255,0.2); color:#fff; width:36px; height:36px; border-radius:50%; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; }
+.shop-close:hover { background:rgba(255,255,255,0.1); }

@@ -37,7 +37,10 @@ export async function ensureUserDoc(user, extra = {}) {
       cpf: extra.cpf || '',
       balance: 0, wins: 0, losses: 0,
       level: 1, xp: 0, createdAt: serverTimestamp(),
+      chips: 200, ownedCues: ['basic'], equippedCue: 'basic',
     });
+  } else {
+    if (!snap.data().chips) await updateDoc(ref, { chips: 200 });
   }
 }
 
@@ -77,6 +80,7 @@ export function register(email, password, displayName) {
       level: 1,
       xp: 0,
       createdAt: serverTimestamp(),
+      chips: 200, ownedCues: ['basic'], equippedCue: 'basic',
     });
     return cred;
   });
@@ -172,6 +176,28 @@ export function subscribeTransaction(txId, callback) {
   return onSnapshot(ref, snap => {
     if (snap.exists()) callback(snap.data());
   });
+}
+
+export async function purchaseCue(uid, cueId, cost) {
+  const ref = doc(db, 'users', uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error('Usuário não encontrado');
+  const data = snap.data();
+  if ((data.chips || 0) < cost) throw new Error('Fichas insuficientes');
+  const owned = data.ownedCues || ['basic'];
+  if (owned.includes(cueId)) throw new Error('Já possui este taco');
+  await updateDoc(ref, {
+    chips: increment(-cost),
+    ownedCues: [...owned, cueId],
+  });
+}
+
+export async function equipCue(uid, cueId) {
+  await updateDoc(doc(db, 'users', uid), { equippedCue: cueId });
+}
+
+export async function addChips(uid, amount) {
+  await updateDoc(doc(db, 'users', uid), { chips: increment(amount) });
 }
 
 // Top-10 daily earners for ranking (reads users ordered by dailyEarnings)

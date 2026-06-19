@@ -1,4 +1,6 @@
 import { auth, db, logout, getProfile, getDailyRanking, subscribeTransaction } from '../firebase.js';
+import { showShop, hideShop } from './Shop.js';
+import { S } from '../state.js';
 import {
   collection, query, orderBy, limit, getDocs,
   doc, getDoc, updateDoc, increment, serverTimestamp,
@@ -186,6 +188,7 @@ const NAV_LINKS = [
   { id:'carteira',  label:'Carteira',         labelMobile:'Carteira', icon: ICO_WALLET },
   { id:'ranking',   label:'Ranking',          labelMobile:'Ranking',  icon: ICO_TREND  },
   { id:'indicacao', label:'Indique e Ganhe',  labelMobile:'Indicar',  icon: ICO_GIFT   },
+  { id:'loja',      label:'Loja de Tacos',    labelMobile:'Loja',     icon: ICO_TABLE  },
   { id:'perfil',    label:'Perfil',           labelMobile:'Perfil',   icon: ICO_USER   },
 ];
 
@@ -210,6 +213,7 @@ function navHTML(activeView) {
         <div class="hp-bal-val" id="hp-bal-val">R$ 0,00</div>
       </div>
     </div>
+    <div class="chip-balance" title="Fichas da loja">💎 <span id="hp-chips-val">0</span></div>
     <button class="hp-avatar-btn" id="hp-avatar-btn" title="Perfil">🎱</button>
   </div>
   <div class="hp-profile-drop" id="hp-drop">
@@ -1403,6 +1407,8 @@ function updateBalance(el) {
     _profile = p;
     const balEl = el.querySelector('#hp-bal-val');
     if (balEl) balEl.textContent = fmtBRL(p.balance || 0);
+    const chipsEl = el.querySelector('#hp-chips-val');
+    if (chipsEl) chipsEl.textContent = (p.chips || S.chips || 0).toLocaleString('pt-BR');
     const avatarBtn = el.querySelector('#hp-avatar-btn');
     if (avatarBtn) {
       if (user.photoURL) {
@@ -1437,6 +1443,16 @@ function switchView(viewId) {
 
   const content = _el.querySelector('.hp-content');
   if (!content) return;
+
+  // Handle shop as overlay, not a view
+  if (viewId === 'loja') {
+    showShop(_profile, () => {
+      // On shop close, sync chips display
+      const chipsEl = _el?.querySelector('#hp-chips-val');
+      if (chipsEl) chipsEl.textContent = (S.chips || 0).toLocaleString('pt-BR');
+    });
+    return;
+  }
 
   let html = '';
   if (viewId === 'inicio') {
@@ -1524,6 +1540,8 @@ export function refreshHome() {
     _profile = p;
     const balEl = _el.querySelector('#hp-bal-val');
     if (balEl) balEl.textContent = fmtBRL(p.balance || 0);
+    const chipsEl = _el.querySelector('#hp-chips-val');
+    if (chipsEl) chipsEl.textContent = (p.chips || S.chips || 0).toLocaleString('pt-BR');
     if (_currentView === 'perfil') {
       const content = _el.querySelector('.hp-content');
       if (content) { content.innerHTML = viewPerfilHTML(user, _profile); wirePerfil(content); }

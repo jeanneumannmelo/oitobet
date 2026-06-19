@@ -41,6 +41,8 @@ function startGameWithBot(bot, betAmount = 0) {
   S.mode = 'offline';
   S.BOT = 1;
   S.gameEndHandled = false;
+  const _botId = bot.id || '';
+  const _botN = Math.abs(String(_botId).split('').reduce((a,c) => a + c.charCodeAt(0), 0));
   S.players[1] = {
     name: bot.nickname || bot.name || 'Bot',
     coins: (bot.wins || 0) * 100,
@@ -48,6 +50,7 @@ function startGameWithBot(bot, betAmount = 0) {
     xp: (bot.wins || 0) % 20 * 5,
     wins: bot.wins || 0,
     flag: '🇧🇷',
+    photoURL: 'https://randomuser.me/api/portraits/men/' + ((_botN % 99) + 1) + '.jpg',
   };
   if (!gameStarted) {
     gameStarted = true;
@@ -99,7 +102,11 @@ async function handleLoggedIn(user) {
     xp: profile?.xp || 0,
     wins: profile?.wins || 0,
     flag: '🇧🇷',
+    photoURL: user.photoURL || null,
   };
+  S.chips = profile?.chips || 0;
+  S.equippedCue = profile?.equippedCue || 'basic';
+  S.ownedCues = profile?.ownedCues || ['basic'];
 
   const hasCPF   = !!(profile?.cpf);
   const hasPhone = !!(profile?.phone);

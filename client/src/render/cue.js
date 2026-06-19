@@ -1,9 +1,12 @@
 import { ctx } from '../canvas.js';
 import { S } from '../state.js';
+import { CUE_CATALOG } from '../cues.js';
 
 export function drawCue() {
   if (S.estado === 'rolando' || S.estado === 'vitoria') return;
   const b = S.balls[0]; if (!b || b.out) return;
+
+  const cue = CUE_CATALOG.find(c => c.id === S.equippedCue) || CUE_CATALOG[0];
 
   const bx = b.x, by = b.y;
   const dx = Math.cos(S.aimAng), dy = Math.sin(S.aimAng);
@@ -32,14 +35,14 @@ export function drawCue() {
       ctx.lineWidth = 1.2; ctx.lineCap = 'round'; ctx.stroke();
     }
 
-    // Ghost ball — semi-transparent white ball
+    // Ghost ball — semi-transparent cue-tip colored ball
     const ghg = ctx.createRadialGradient(gx - BR * 0.3, gy - BR * 0.35, 0, gx, gy, BR);
     ghg.addColorStop(0, 'rgba(255,255,255,0.32)');
     ghg.addColorStop(0.5, 'rgba(255,255,255,0.15)');
     ghg.addColorStop(1, 'rgba(255,255,255,0.05)');
     ctx.beginPath(); ctx.arc(gx, gy, BR, 0, Math.PI * 2);
     ctx.fillStyle = ghg; ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.38)'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.strokeStyle = cue.colors.tip + '60'; ctx.lineWidth = 1.2; ctx.stroke();
 
     // Ghost ball highlight
     const ghi = ctx.createRadialGradient(gx - BR * 0.35, gy - BR * 0.4, 0, gx, gy, BR * 0.65);
@@ -62,7 +65,7 @@ export function drawCue() {
 
   // ── Cue stick ───────────────────────────────────────────────────────────────
   const tipGap  = BR + 3.5 + S.pullBack;
-  const cueLen  = 260;
+  const cueLen  = 300;
   const tipW    = 2.2;   // half-width at tip (ferrule)
   const buttW   = 8.5;   // half-width at butt
 
@@ -73,7 +76,7 @@ export function drawCue() {
   // Perpendicular direction
   const px = -dy, py = dx;
 
-  // Ferrule end (7px before tip, slightly wider)
+  // Ferrule end (slightly wider band near tip)
   const ferruleLen = 10;
   const fx = tx + dx * ferruleLen, fy = ty + dy * ferruleLen;
 
@@ -99,15 +102,13 @@ export function drawCue() {
   ctx.lineTo(bux - px * buttW, buy - py * buttW);
   ctx.closePath();
 
-  // Wood gradient along cue length (butt dark → mid pale → light near tip)
+  // Wood gradient using cue colors
   const cg = ctx.createLinearGradient(bux, buy, fx, fy);
-  cg.addColorStop(0,    '#3a1806');   // dark butt end
-  cg.addColorStop(0.12, '#6a3010');
-  cg.addColorStop(0.28, '#9a5018');
-  cg.addColorStop(0.5,  '#c88030');   // mid warm honey
-  cg.addColorStop(0.7,  '#e8c070');   // pale maple
-  cg.addColorStop(0.88, '#f4dca0');
-  cg.addColorStop(0.97, '#fffaf0');   // very light near ferrule
+  cg.addColorStop(0,    cue.colors.butt);
+  cg.addColorStop(0.18, cue.colors.mid);
+  cg.addColorStop(0.5,  cue.colors.mid);
+  cg.addColorStop(0.75, cue.colors.midLight);
+  cg.addColorStop(0.97, '#fffaf0');
   ctx.fillStyle = cg; ctx.fill();
 
   // Cylindrical sheen overlay (perpendicular gradient)
@@ -119,7 +120,6 @@ export function drawCue() {
   ctx.lineTo(bux - px * buttW, buy - py * buttW);
   ctx.closePath(); ctx.clip();
 
-  // Mid-point for the perpendicular gradient
   const mx = (bux + fx) / 2, my = (buy + fy) / 2;
   const cyl = ctx.createLinearGradient(
     mx - px * buttW * 1.1, my - py * buttW * 1.1,
@@ -143,26 +143,22 @@ export function drawCue() {
   ctx.closePath();
   ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 0.8; ctx.stroke();
 
-  // ── Wrap rings on butt section (decorative) ────────────────────────────────
-  const ringPositions = [0.10, 0.15, 0.20, 0.26, 0.30]; // as fraction of cueLen from butt
+  // ── Wrap rings near butt end ───────────────────────────────────────────────
+  const ringPositions = [0.08, 0.13, 0.18, 0.23, 0.27, 0.31]; // 6 rings near butt
   ringPositions.forEach((t, i) => {
-    const rx = bux + (fx - bux) * t, ry = buy + (fy - buy) * t;
-    const hw = buttW - (buttW - tipW) * t; // half-width at this position
-    const ringThick = 3.5 - i * 0.4;
-
-    // Dark ring base
+    const w = buttW + (tipW - buttW) * t; // interpolated half-width
+    const rX = bux + (fx - bux) * t;
+    const rY = buy + (fy - buy) * t;
+    // Draw perpendicular stripe
+    ctx.save();
     ctx.beginPath();
-    ctx.moveTo(rx + px * (hw + ringThick * 0.5), ry + py * (hw + ringThick * 0.5));
-    ctx.lineTo(rx + dx * (i === 0 ? 2.5 : 1.5) + px * (hw + ringThick * 0.5),
-               ry + dy * (i === 0 ? 2.5 : 1.5) + py * (hw + ringThick * 0.5));
-    ctx.lineTo(rx + dx * (i === 0 ? 2.5 : 1.5) - px * (hw + ringThick * 0.5),
-               ry + dy * (i === 0 ? 2.5 : 1.5) - py * (hw + ringThick * 0.5));
-    ctx.lineTo(rx - px * (hw + ringThick * 0.5), ry - py * (hw + ringThick * 0.5));
-    ctx.closePath();
-    // Ring color: alternate black and ivory
-    const ringCol = i % 2 === 0 ? '#1a0800' : '#f0e0b0';
-    ctx.fillStyle = ringCol; ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.5; ctx.stroke();
+    ctx.moveTo(rX + px * (w + 2.5), rY + py * (w + 2.5));
+    ctx.lineTo(rX - px * (w + 2.5), rY - py * (w + 2.5));
+    ctx.strokeStyle = i % 2 === 0 ? cue.colors.rings[0] : cue.colors.rings[1];
+    ctx.lineWidth = 4 - i * 0.3;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+    ctx.restore();
   });
 
   // ── Ferrule (white band near tip) ─────────────────────────────────────────
@@ -180,7 +176,7 @@ export function drawCue() {
   ctx.fillStyle = fg; ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.6; ctx.stroke();
 
-  // ── Leather tip (blue chalk) ───────────────────────────────────────────────
+  // ── Leather tip (colored chalk) ───────────────────────────────────────────
   const tipRadius = tipW * 1.05;
   const tipCenter = { x: tx, y: ty };
   ctx.beginPath(); ctx.arc(tipCenter.x, tipCenter.y, tipRadius, 0, Math.PI * 2);
@@ -188,18 +184,21 @@ export function drawCue() {
     tipCenter.x - tipRadius * 0.3, tipCenter.y - tipRadius * 0.3, 0,
     tipCenter.x, tipCenter.y, tipRadius
   );
-  tg.addColorStop(0, '#5cc4e0'); tg.addColorStop(0.5, '#2a96ba'); tg.addColorStop(1, '#1a6a8a');
+  // Lighten tip color for highlight
+  tg.addColorStop(0, cue.colors.tip + 'ee');
+  tg.addColorStop(0.5, cue.colors.tip);
+  tg.addColorStop(1, cue.colors.tip + '88');
   ctx.fillStyle = tg; ctx.fill();
-  ctx.strokeStyle = '#1a5878'; ctx.lineWidth = 0.7; ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 0.7; ctx.stroke();
 
   // Chalk dust highlight on tip
   ctx.beginPath(); ctx.arc(tipCenter.x - tipRadius * 0.25, tipCenter.y - tipRadius * 0.3, tipRadius * 0.35, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(180,230,250,0.5)'; ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
 
   // ── Butt end cap ──────────────────────────────────────────────────────────
   ctx.beginPath(); ctx.arc(bux, buy, buttW, 0, Math.PI * 2);
   const bg = ctx.createRadialGradient(bux - buttW * 0.3, buy - buttW * 0.3, 0, bux, buy, buttW);
-  bg.addColorStop(0, '#4a2c10'); bg.addColorStop(0.6, '#2a1408'); bg.addColorStop(1, '#100800');
+  bg.addColorStop(0, cue.colors.mid); bg.addColorStop(0.6, cue.colors.butt); bg.addColorStop(1, '#100800');
   ctx.fillStyle = bg; ctx.fill();
   ctx.strokeStyle = 'rgba(200,140,60,0.4)'; ctx.lineWidth = 1; ctx.stroke();
   // Butt cap shine

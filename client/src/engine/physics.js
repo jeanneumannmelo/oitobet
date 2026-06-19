@@ -2,7 +2,7 @@
 import { S } from '../state.js';
 import { throttledBall, throttledWall, sndPocket } from '../audio/sounds.js';
 
-const FRIC = 0.989;
+const FRIC = 0.9940;
 const REST = 0.84;
 
 export function step() {
