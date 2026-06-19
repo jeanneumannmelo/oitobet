@@ -44,9 +44,9 @@ function hmacSign(payload) {
 }
 
 export function verifyWebhookSignature(rawBody, signatureHeader) {
-  if (!signatureHeader) return false;
-  const expected = hmacSign(rawBody);
+  if (!signatureHeader || !HMAC_SECRET) return false;
   try {
+    const expected = hmacSign(rawBody);
     return crypto.timingSafeEqual(
       Buffer.from(expected, 'hex'),
       Buffer.from(signatureHeader, 'hex'),

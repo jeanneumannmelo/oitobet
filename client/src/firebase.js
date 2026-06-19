@@ -164,47 +164,6 @@ export async function finalizeMatch({ player1Uid, player2Uid, winnerUid, xpGain 
   ]);
 }
 
-// Finalize a bot or online match: update balance + daily ranking stats
-export async function finalizeBotMatch({ uid, playerWon, betAmount }) {
-  if (!uid) return;
-  const today = new Date().toISOString().split('T')[0];
-  const ref = doc(db, 'users', uid);
-  try {
-    const snap = await getDoc(ref);
-    const data = snap.data() || {};
-    const isSameDay = data.dailyDate === today;
-    const updates = {};
-
-    if (playerWon) {
-      updates.wins = increment(1);
-      updates.xp = increment(50);
-      if (betAmount > 0) {
-        // Stake was already deducted on game start; credit prize (2× stake)
-        updates.balance = increment(betAmount * 2);
-        updates.totalEarned = increment(betAmount * 2);
-      }
-      if (isSameDay) {
-        updates.dailyWins = increment(1);
-        if (betAmount > 0) updates.dailyEarnings = increment(betAmount);
-      } else {
-        updates.dailyDate = today;
-        updates.dailyWins = 1;
-        updates.dailyEarnings = betAmount > 0 ? betAmount : 0;
-      }
-    } else {
-      updates.losses = increment(1);
-      updates.xp = increment(10);
-      if (!isSameDay) {
-        updates.dailyDate = today;
-        updates.dailyWins = 0;
-        updates.dailyEarnings = 0;
-      }
-    }
-    await updateDoc(ref, updates);
-  } catch(e) {
-    console.error('[finalizeBotMatch]', e);
-  }
-}
 
 // Subscribe to a transaction doc — calls callback(data) on every change.
 // Returns unsubscribe function.
