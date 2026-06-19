@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { GameRoom } from './GameRoom.js';
 import paymentRoutes from './payment/routes.js';
-import { registerWebhook, getAccountBalance } from './payment/cartwaveClient.js';
+import { registerWebhook, getAccountBalance, diagPixEndpoints } from './payment/cartwaveClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -43,67 +43,10 @@ app.get('/_diag/cartwave', async (_req, res) => {
   } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 app.get('/_diag/pix', async (_req, res) => {
-  const { ProxyAgent, fetch: undiciFetch } = await import('undici');
-  const fixieUrl = process.env.FIXIE_URL;
-  const agent = fixieUrl ? new ProxyAgent(fixieUrl) : null;
-  const proxied = (url, opts = {}) =>
-    agent ? undiciFetch(url, { ...opts, dispatcher: agent }) : fetch(url, opts);
-
-  const BASE_URL = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
-  let token;
   try {
-    const tr = await proxied(`${BASE_URL}/v2/finance/auth-token/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: process.env.CARTWAVE_EMAIL, client_secret: process.env.CARTWAVE_PASSWORD }),
-    });
-    const td = await tr.json(); token = td.access_token;
-  } catch (e) { return res.status(502).json({ ok: false, step: 'auth', error: e.message }); }
-
-  const BRANCH = process.env.CARTWAVE_ACCOUNT_BRANCH || '0001';
-  const NUMBER = process.env.CARTWAVE_ACCOUNT_NUMBER || '7004635';
-  const expiry = new Date(Date.now() + 30*60*1000).toISOString().slice(0, 19);
-
-  // Probe via POST with actual PIX body — 4xx responses tell us which paths exist
-  const postBody = JSON.stringify({
-    source_account_branch_identifier: BRANCH,
-    source_account_number: NUMBER,
-    amount: 10,
-    type_fine: 'NONE',
-    expiration_date: expiry,
-    debtor_name: 'Teste PIX',
-    tag: 'test_pix_probe',
-  });
-
-  const candidates = [
-    '/v2/finance/create-pix-copy-and-paste-web-simplified',
-    '/v2/finance/create-pix-copy-paste-web-simplified',
-    '/v2/finance/create-pix',
-    '/v2/finance/pix',
-    '/v2/finance/create-charge',
-    '/v2/finance/charge',
-    '/v2/finance/pix-charge',
-    '/v2/transaction/pix',
-    '/v2/transaction/charge',
-    '/v1/finance/create-pix-copy-and-paste-web-simplified',
-    '/api/pix/charge',
-  ];
-
-  const results = {};
-  for (const path of candidates) {
-    try {
-      const r = await proxied(`${BASE_URL}${path}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: postBody,
-      });
-      const text = await r.text(); let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 200); }
-      results[path] = { status: r.status, body: parsed };
-      // Stop at first non-404 response
-      if (r.status !== 404) break;
-    } catch (e) { results[path] = { error: e.message }; }
-  }
-  res.json({ ok: true, token_ok: !!token, results });
+    const result = await diagPixEndpoints();
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 
 app.use(express.json({

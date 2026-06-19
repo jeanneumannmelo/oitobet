@@ -137,3 +137,70 @@ export async function registerWebhook(url, typeWebhook) {
     type_webhook: typeWebhook,
   });
 }
+
+// Diagnostic: probe multiple PIX endpoint candidates using existing proxy+auth
+export async function diagPixEndpoints() {
+  const token = await getToken();
+  const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19);
+  const postBody = JSON.stringify({
+    source_account_branch_identifier: ACCOUNT_BRANCH,
+    source_account_number: ACCOUNT_NUMBER,
+    amount: 10,
+    type_fine: 'NONE',
+    expiration_date: expiry,
+    debtor_name: 'Teste PIX',
+    tag: 'test_pix_probe_' + Date.now(),
+  });
+
+  // Also probe GET on API root paths to discover routes
+  const getProbes = ['/', '/v2/', '/openapi.json', '/docs', '/swagger/index.html'];
+  const getResults = {};
+  for (const path of getProbes) {
+    try {
+      const r = await proxiedFetch(`${BASE_URL}${path}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const text = await r.text();
+      getResults[path] = { status: r.status, body: text.slice(0, 300) };
+    } catch (e) { getResults[path] = { error: e.message }; }
+  }
+
+  const candidates = [
+    '/v2/finance/create-pix-copy-and-paste-web-simplified',
+    '/v2/finance/create-pix-copy-paste-web-simplified',
+    '/v2/finance/create-pix-copy-and-paste-web-simplified/',
+    '/v2/finance/create-pix',
+    '/v2/finance/pix',
+    '/v2/finance/create-charge',
+    '/v2/finance/charge',
+    '/v2/finance/pix-charge',
+    '/v2/transaction/pix',
+    '/v2/transaction/charge',
+    '/v1/finance/create-pix-copy-and-paste-web-simplified',
+    '/api/pix/charge',
+    '/v2/pix/create',
+    '/v2/pix',
+    '/finance/create-pix-copy-and-paste-web-simplified',
+  ];
+
+  const postResults = {};
+  for (const path of candidates) {
+    try {
+      const r = await proxiedFetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: postBody,
+      });
+      const text = await r.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 400); }
+      postResults[path] = { status: r.status, body: parsed };
+      if (r.status !== 404) break; // stop at first non-404
+    } catch (e) { postResults[path] = { error: e.message }; }
+  }
+
+  return { token_ok: true, getProbes: getResults, postResults };
+}
