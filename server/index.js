@@ -43,6 +43,15 @@ app.get('/api/diag/cartwave', async (_req, res) => {
     res.status(502).json({ ok: false, error: e.message });
   }
 });
+app.get('/api/diag/ip', async (_req, res) => {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    const data = await r.json();
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
