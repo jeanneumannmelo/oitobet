@@ -1,4 +1,4 @@
-import { auth, db, logout, getProfile, getDailyRanking } from '../firebase.js';
+import { auth, db, logout, getProfile, getDailyRanking, subscribeTransaction } from '../firebase.js';
 import {
   collection, query, orderBy, limit, getDocs,
   doc, getDoc, updateDoc, increment, serverTimestamp,
@@ -1143,22 +1143,169 @@ function wireCarteira(el) {
     });
   });
 
-  el.querySelector('#wt-gerar-pix')?.addEventListener('click', () => {
-    const val = +(el.querySelector('#wt-dep-input')?.value) || _depAmount;
-    if (val < 10)  { alert('Valor mínimo de depósito é R$ 10,00'); return; }
-    if (val > 500) { alert('Valor máximo de depósito é R$ 500,00'); return; }
-    alert(`QR Code PIX gerado para ${fmtBRL(val)}!\n\nIntegração com gateway PIX será implementada em breve.`);
+  el.querySelector('#wt-gerar-pix')?.addEventListener('click', () => handleDeposit(el));
+  el.querySelector('#wt-solicitar-saque')?.addEventListener('click', () => handleWithdraw(el));
+}
+
+async function getIdToken() {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Não autenticado');
+  return user.getIdToken();
+}
+
+async function handleDeposit(el) {
+  const val = +(el.querySelector('#wt-dep-input')?.value) || _depAmount;
+  if (val < 10)  { showToast('Valor mínimo de depósito é R$ 10,00', 'error'); return; }
+  if (val > 500) { showToast('Valor máximo de depósito é R$ 500,00', 'error'); return; }
+
+  const btn = el.querySelector('#wt-gerar-pix');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PIX…'; }
+
+  try {
+    const token = await getIdToken();
+    const res = await fetch('/api/payment/deposit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ amount: val }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Erro ao gerar PIX', 'error'); return; }
+
+    showPixModal({ amount: val, pixCode: data.pixCode, qrCodeUrl: data.qrCodeUrl, txId: data.txId, expiresAt: data.expiresAt });
+  } catch (e) {
+    console.error('[deposit]', e);
+    showToast('Erro de conexão. Tente novamente.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = `${ICO_PIX} Gerar QR Code PIX`; }
+  }
+}
+
+async function handleWithdraw(el) {
+  const val = +(el.querySelector('#wt-sac-input')?.value) || 0;
+  const bal = _profile?.balance || 0;
+  if (val < 10)  { showToast('Valor mínimo de saque é R$ 10,00', 'error'); return; }
+  if (val > bal) { showToast('Saldo insuficiente', 'error'); return; }
+  const chave = (el.querySelector('#wt-chave-input')?.value || '').trim();
+  if (!chave) { showToast('Informe sua chave PIX', 'error'); return; }
+  const pixKeyType = el.querySelector('#wt-chave-tipo')?.value?.toLowerCase().replace('-', '') || 'cpf';
+
+  const btn = el.querySelector('#wt-solicitar-saque');
+  if (btn) { btn.disabled = true; btn.textContent = 'Processando…'; }
+
+  try {
+    const token = await getIdToken();
+    const res = await fetch('/api/payment/withdraw', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ amount: val, pixKey: chave, pixKeyType }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast(data.error || 'Erro no saque', 'error'); return; }
+
+    showToast(`Saque de ${fmtBRL(val)} solicitado! Processamento em até 24h.`, 'success');
+    // Refresh profile balance
+    if (auth.currentUser) {
+      const updated = await getProfile(auth.currentUser.uid);
+      if (updated) { _profile = updated; refreshBalanceDisplay(); }
+    }
+  } catch (e) {
+    console.error('[withdraw]', e);
+    showToast('Erro de conexão. Tente novamente.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = `${ICO_UP} Solicitar Saque`; }
+  }
+}
+
+function refreshBalanceDisplay() {
+  const balEl = document.querySelector('.wt-bal-amount');
+  if (balEl) balEl.textContent = fmtBRL(_profile?.balance || 0);
+}
+
+function showPixModal({ amount, pixCode, qrCodeUrl, txId, expiresAt }) {
+  const existing = document.getElementById('pix-modal-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'pix-modal-overlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.85);
+    display:flex;align-items:center;justify-content:center;padding:16px;
+  `;
+
+  const expiryStr = expiresAt
+    ? new Date(expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+
+  overlay.innerHTML = `
+    <div style="background:#1a1a2e;border:1px solid rgba(245,200,0,.25);border-radius:16px;padding:24px;max-width:420px;width:100%;position:relative">
+      <button id="pix-modal-close" style="position:absolute;top:12px;right:12px;background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;padding:4px">✕</button>
+      <h3 style="margin:0 0 4px;color:#f5c800;font-size:18px">Pagamento PIX</h3>
+      <p style="margin:0 0 16px;color:rgba(255,255,255,.5);font-size:13px">Depósito de ${fmtBRL(amount)}${expiryStr ? ' · expira às ' + expiryStr : ''}</p>
+      ${qrCodeUrl ? `<img src="${qrCodeUrl}" alt="QR Code PIX" style="width:180px;height:180px;display:block;margin:0 auto 16px;border-radius:8px;background:#fff;padding:8px">` : ''}
+      <label style="color:rgba(255,255,255,.45);font-size:12px;display:block;margin-bottom:6px">Código PIX (copia e cola)</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+        <input id="pix-code-input" type="text" readonly value="${pixCode}"
+          style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:10px 12px;color:#fff;font-size:12px;font-family:monospace;min-width:0">
+        <button id="pix-copy-btn" style="background:#f5c800;color:#000;border:none;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer;white-space:nowrap;font-size:13px">Copiar</button>
+      </div>
+      <div id="pix-status" style="text-align:center;color:rgba(255,255,255,.45);font-size:13px;padding:12px;background:rgba(255,255,255,.04);border-radius:8px">
+        Aguardando pagamento…
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#pix-modal-close').addEventListener('click', () => {
+    overlay.remove();
+    if (unsubTx) unsubTx();
   });
 
-  el.querySelector('#wt-solicitar-saque')?.addEventListener('click', () => {
-    const val = +(el.querySelector('#wt-sac-input')?.value) || 0;
-    const bal = _profile?.balance || 0;
-    if (val < 10) { alert('Valor mínimo de saque é R$ 10,00'); return; }
-    if (val > bal) { alert('Saldo insuficiente'); return; }
-    const chave = el.querySelector('#wt-chave-input')?.value;
-    if (!chave) { alert('Informe sua chave PIX'); return; }
-    alert(`Solicitação de saque de ${fmtBRL(val)} enviada!\n\nProcessamento em até 24h.`);
+  overlay.querySelector('#pix-copy-btn').addEventListener('click', () => {
+    navigator.clipboard?.writeText(pixCode).catch(() => {});
+    const btn = overlay.querySelector('#pix-copy-btn');
+    btn.textContent = 'Copiado!';
+    setTimeout(() => { btn.textContent = 'Copiar'; }, 2000);
   });
+
+  // Listen for payment confirmation
+  let unsubTx = null;
+  if (txId) {
+    unsubTx = subscribeTransaction(txId, tx => {
+      const statusEl = overlay.querySelector('#pix-status');
+      if (tx.status === 'completed') {
+        if (statusEl) statusEl.innerHTML = '<span style="color:#4ade80;font-weight:700">✓ Pagamento confirmado! Saldo atualizado.</span>';
+        setTimeout(() => { overlay.remove(); }, 2500);
+        if (unsubTx) unsubTx();
+        // Refresh profile
+        if (auth.currentUser) {
+          getProfile(auth.currentUser.uid).then(p => {
+            if (p) { _profile = p; refreshBalanceDisplay(); }
+          });
+        }
+      } else if (tx.status === 'failed') {
+        if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">Pagamento não confirmado. Tente novamente.</span>';
+        if (unsubTx) unsubTx();
+      }
+    });
+  }
+}
+
+function showToast(msg, type = 'info') {
+  const existing = document.getElementById('wt-toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.id = 'wt-toast';
+  const color = type === 'error' ? '#f87171' : type === 'success' ? '#4ade80' : '#f5c800';
+  t.style.cssText = `
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:#1a1a2e;border:1px solid ${color};border-radius:10px;
+    padding:12px 20px;color:${color};font-size:14px;font-weight:600;
+    z-index:10000;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.4);
+  `;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
 }
 
 function wireIndicacao(el) {

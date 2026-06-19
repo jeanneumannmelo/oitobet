@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { GameRoom } from './GameRoom.js';
+import paymentRoutes from './payment/routes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,6 +21,20 @@ const io = new Server(http, {
   cors: { origin: ALLOWED_ORIGINS, credentials: true },
   transports: ['websocket', 'polling'],
 });
+
+// Raw body capture for HMAC webhook verification (must be before JSON parser)
+app.use((req, _res, next) => {
+  if (req.path === '/api/webhooks/cartwave') {
+    let chunks = [];
+    req.on('data', c => chunks.push(c));
+    req.on('end', () => { req.rawBody = Buffer.concat(chunks).toString('utf8'); next(); });
+  } else {
+    next();
+  }
+});
+
+app.use(express.json());
+app.use('/api', paymentRoutes);
 
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');

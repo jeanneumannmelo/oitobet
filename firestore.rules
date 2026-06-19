@@ -3,21 +3,24 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── Users ────────────────────────────────────────────────────────────────
-    // Only the authenticated owner can read/write their own doc.
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Allow all updates except financial fields (balance, totalDeposited, totalWithdrawn)
+      // which are managed exclusively by the server via Admin SDK
+      allow write: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+           .hasAny(['balance', 'totalDeposited', 'totalWithdrawn']);
+      // Allow creating new user docs (first login / registration)
+      allow create: if request.auth != null && request.auth.uid == uid;
     }
 
     // ── Bots ─────────────────────────────────────────────────────────────────
-    // Any authenticated user can read bots. Only anonymous seed script can write.
     match /bots/{botId} {
       allow read: if request.auth != null;
-      // Temporarily allow write for anonymous seeding — tighten after seed.
       allow write: if request.auth != null && request.auth.token.firebase.sign_in_provider == 'anonymous';
     }
 
     // ── Matches ───────────────────────────────────────────────────────────────
-    // Players can read their own matches. Server (or client) creates records.
     match /matches/{matchId} {
       allow read: if request.auth != null &&
         (resource.data.player1Uid == request.auth.uid ||
@@ -25,11 +28,18 @@ service cloud.firestore {
       allow create: if request.auth != null;
     }
 
-    // ── Withdrawals ───────────────────────────────────────────────────────────
-    // Users can create and read their own withdrawal requests.
+    // ── Withdrawals (legacy — keep for backward compat) ───────────────────────
     match /withdrawals/{docId} {
       allow read: if request.auth != null && resource.data.uid == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+    }
+
+    // ── Transactions ──────────────────────────────────────────────────────────
+    // Created and updated exclusively by Admin SDK (server).
+    // Client can only read their own transaction docs (for polling deposit status).
+    match /transactions/{txId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create, update, delete: if false;
     }
   }
 }

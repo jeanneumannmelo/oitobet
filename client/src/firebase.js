@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
   authDomain: "oitobet-brasil.firebaseapp.com",
@@ -184,6 +184,15 @@ export async function finalizeBotMatch({ uid, playerWon, betAmount }) {
   } catch(e) {
     console.error('[finalizeBotMatch]', e);
   }
+}
+
+// Subscribe to a transaction doc — calls callback(data) on every change.
+// Returns unsubscribe function.
+export function subscribeTransaction(txId, callback) {
+  const ref = doc(db, 'transactions', txId);
+  return onSnapshot(ref, snap => {
+    if (snap.exists()) callback(snap.data());
+  });
 }
 
 // Top-10 daily earners for ranking (reads users ordered by dailyEarnings)
