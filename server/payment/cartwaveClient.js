@@ -152,37 +152,20 @@ export async function diagPixEndpoints() {
     tag: 'test_pix_probe_' + Date.now(),
   });
 
-  const T5 = () => AbortSignal.timeout(5000);
-
-  // Also probe GET on API root paths to discover routes
-  const getProbes = ['/', '/v2/', '/openapi.json', '/docs', '/swagger/index.html'];
+  // Probe GET on API root paths to discover available routes
+  const getProbes = ['/v2/', '/openapi.json', '/docs', '/swagger/index.html'];
   const getResults = {};
   for (const path of getProbes) {
     try {
       const r = await proxiedFetch(`${BASE_URL}${path}`, {
         headers: { 'Authorization': `Bearer ${token}` },
-        signal: T5(),
       });
       const text = await r.text();
       getResults[path] = { status: r.status, body: text.slice(0, 200) };
     } catch (e) { getResults[path] = { error: e.message.slice(0, 80) }; }
   }
 
-  // Also try alternative base URLs (with tight timeout)
   const altBaseResults = {};
-  for (const base of ['https://pix.cartwavehub.com.br', 'https://finance.cartwavehub.com.br']) {
-    try {
-      const r = await proxiedFetch(`${base}/v2/finance/create-pix-copy-and-paste-web-simplified`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: postBody,
-        signal: T5(),
-      });
-      const text = await r.text();
-      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 200); }
-      altBaseResults[base] = { status: r.status, body: parsed };
-    } catch (e) { altBaseResults[base] = { error: e.message.slice(0, 80) }; }
-  }
 
   const candidates = [
     '/v2/finance/create-pix-copy-and-paste-web-simplified',
@@ -215,7 +198,6 @@ export async function diagPixEndpoints() {
           'Content-Type': 'application/json',
         },
         body: postBody,
-        signal: T5(),
       });
       const text = await r.text();
       let parsed;
