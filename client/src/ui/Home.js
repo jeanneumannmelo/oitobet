@@ -408,6 +408,14 @@ function viewCarteiraHTML(profile) {
         <span>R$</span>
         <input type="number" id="wt-sac-input" placeholder="0,00" min="10" max="${bal}" step="0.01">
       </div>
+      <div id="wt-sac-fee" style="display:none;background:rgba(255,255,255,.04);border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:12px">
+        <div style="display:flex;justify-content:space-between;color:rgba(255,255,255,.45);margin-bottom:2px">
+          <span>Taxa de saque</span><span style="color:#f87171">− R$ 2,00</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:#fff;font-weight:700">
+          <span>Você recebe</span><span id="wt-sac-net" style="color:#4ade80">R$ 0,00</span>
+        </div>
+      </div>
       <label style="color:rgba(255,255,255,.45);font-size:12px;display:block;margin-bottom:8px">Tipo de chave</label>
       <select class="wt-select" id="wt-chave-tipo">
         <option>CPF</option><option>E-mail</option><option>Telefone</option><option>Chave aleatória</option>
@@ -1145,6 +1153,19 @@ function wireCarteira(el) {
 
   el.querySelector('#wt-gerar-pix')?.addEventListener('click', () => handleDeposit(el));
   el.querySelector('#wt-solicitar-saque')?.addEventListener('click', () => handleWithdraw(el));
+
+  const sacInput = el.querySelector('#wt-sac-input');
+  const feeBox   = el.querySelector('#wt-sac-fee');
+  const netEl    = el.querySelector('#wt-sac-net');
+  sacInput?.addEventListener('input', () => {
+    const v = parseFloat(sacInput.value);
+    if (v >= 10 && feeBox && netEl) {
+      feeBox.style.display = 'block';
+      netEl.textContent = fmtBRL(Math.max(0, v - 2));
+    } else if (feeBox) {
+      feeBox.style.display = 'none';
+    }
+  });
 }
 
 async function getIdToken() {
@@ -1180,11 +1201,14 @@ async function handleDeposit(el) {
   }
 }
 
+const WITHDRAW_FEE = 2;
+
 async function handleWithdraw(el) {
   const val = +(el.querySelector('#wt-sac-input')?.value) || 0;
   const bal = _profile?.balance || 0;
-  if (val < 10)  { showToast('Valor mínimo de saque é R$ 10,00', 'error'); return; }
-  if (val > bal) { showToast('Saldo insuficiente', 'error'); return; }
+  const totalDebit = val + WITHDRAW_FEE;
+  if (val < 10)        { showToast('Valor mínimo de saque é R$ 10,00', 'error'); return; }
+  if (totalDebit > bal) { showToast(`Saldo insuficiente (necessário ${fmtBRL(totalDebit)} incluindo taxa de R$2,00)`, 'error'); return; }
   const chave = (el.querySelector('#wt-chave-input')?.value || '').trim();
   if (!chave) { showToast('Informe sua chave PIX', 'error'); return; }
   const pixKeyType = el.querySelector('#wt-chave-tipo')?.value?.toLowerCase().replace('-', '') || 'cpf';

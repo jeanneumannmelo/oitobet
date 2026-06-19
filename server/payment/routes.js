@@ -52,6 +52,8 @@ router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (
   }
 });
 
+const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
+
 // ── POST /api/payment/withdraw ────────────────────────────────────────────────
 router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async (req, res) => {
   try {
@@ -66,18 +68,19 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
       return res.status(400).json({ error: 'Chave PIX obrigatória.' });
     }
 
+    const totalDebit = amount + WITHDRAW_FEE; // amount the user receives + fee
+
     // Server-side balance check via Admin SDK (never trust client)
     const userRef = adminDb.collection('users').doc(req.uid);
-    let balance;
     await adminDb.runTransaction(async t => {
       const snap = await t.get(userRef);
       if (!snap.exists) throw new Error('Usuário não encontrado');
-      balance = snap.data().balance || 0;
-      if (balance < amount) throw new Error('INSUFFICIENT_BALANCE');
+      const balance = snap.data().balance || 0;
+      if (balance < totalDebit) throw new Error('INSUFFICIENT_BALANCE');
 
-      // Atomic debit
+      // Atomic debit: amount received by user + R$2 fee
       t.update(userRef, {
-        balance: FieldValue.increment(-amount),
+        balance: FieldValue.increment(-totalDebit),
         totalWithdrawn: FieldValue.increment(amount),
       });
     });
@@ -86,7 +89,9 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
     const txRef = await adminDb.collection('transactions').add({
       uid: req.uid,
       type: 'withdrawal',
-      amount,
+      amount,       // net amount sent to user
+      fee: WITHDRAW_FEE,
+      totalDebit,   // amount deducted from balance
       pixKey,
       pixKeyType,
       status: 'pending',
@@ -97,9 +102,9 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
     try {
       cashout = await createCashout({ amount, pixKey, pixKeyType, externalId: txRef.id });
     } catch (e) {
-      // If CartWave fails, refund balance
+      // If CartWave fails, refund full debit (amount + fee)
       await userRef.update({
-        balance: FieldValue.increment(amount),
+        balance: FieldValue.increment(totalDebit),
         totalWithdrawn: FieldValue.increment(-amount),
       });
       await txRef.update({ status: 'failed', error: e.message });
@@ -181,11 +186,12 @@ router.post('/webhooks/cartwave', async (req, res) => {
       console.log(`[webhook] cashout.completed uid=${tx.uid} amount=${amount}`);
 
     } else if (eventType === 'cashout.failed' || eventType === 'withdrawal.failed') {
-      // Estorno: refund balance
+      // Estorno: refund amount + fee (totalDebit)
+      const totalDebit = tx.totalDebit || (tx.amount + (tx.fee || 0));
       await adminDb.runTransaction(async t => {
         t.update(userRef, {
-          balance: FieldValue.increment(amount),
-          totalWithdrawn: FieldValue.increment(-amount),
+          balance: FieldValue.increment(totalDebit),
+          totalWithdrawn: FieldValue.increment(-tx.amount),
         });
         t.update(txDoc.ref, { status: 'failed', failedAt: FieldValue.serverTimestamp() });
       });
