@@ -33,6 +33,17 @@ app.use(express.json({
 }));
 app.use('/api', paymentRoutes);
 
+// Temporary diagnostics — remove after testing
+import { getAccountBalance } from './payment/cartwaveClient.js';
+app.get('/api/diag/cartwave', async (_req, res) => {
+  try {
+    const balance = await getAccountBalance();
+    res.json({ ok: true, balance });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
 if (existsSync(distPath)) {
