@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { GameRoom } from './GameRoom.js';
 import paymentRoutes from './payment/routes.js';
-import { registerWebhook } from './payment/cartwaveClient.js';
+import { registerWebhook, getAccountBalance } from './payment/cartwaveClient.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -24,6 +24,20 @@ const io = new Server(http, {
 });
 
 // Capture raw body for HMAC webhook verification via express.json verify hook
+// Temp diagnostics — mounted before all routes so static serving doesn't catch them
+app.get('/_diag/ip', async (_req, res) => {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json');
+    res.json(await r.json());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/_diag/cartwave', async (_req, res) => {
+  try {
+    const balance = await getAccountBalance();
+    res.json({ ok: true, balance });
+  } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
 app.use(express.json({
   verify: (req, _res, buf) => {
     if (req.path === '/api/webhooks/cartwave') {
@@ -33,25 +47,6 @@ app.use(express.json({
 }));
 app.use('/api', paymentRoutes);
 
-// Temporary diagnostics — remove after testing
-import { getAccountBalance } from './payment/cartwaveClient.js';
-app.get('/api/diag/cartwave', async (_req, res) => {
-  try {
-    const balance = await getAccountBalance();
-    res.json({ ok: true, balance });
-  } catch (e) {
-    res.status(502).json({ ok: false, error: e.message });
-  }
-});
-app.get('/api/diag/ip', async (_req, res) => {
-  try {
-    const r = await fetch('https://api.ipify.org?format=json');
-    const data = await r.json();
-    res.json(data);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
