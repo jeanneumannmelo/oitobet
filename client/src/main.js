@@ -109,7 +109,12 @@ async function registerReferral(user) {
   } catch {}
 }
 
+function hideSplash() {
+  if (typeof window.hideSplash === 'function') window.hideSplash();
+}
+
 async function handleLoggedIn(user) {
+  hideSplash();
   hideAuth();
   registerReferral(user);
 
@@ -194,6 +199,7 @@ const _redirectTimeout = new Promise(resolve => setTimeout(resolve, 4000, null))
 let _authResolved = false;
 setTimeout(() => {
   if (_authResolved) return;
+  hideSplash();
   if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
     try { showAuth(); } catch (_) {}
   }
@@ -201,6 +207,7 @@ setTimeout(() => {
 
 // Same for JS errors — show login if nothing is on screen.
 window.addEventListener('error', () => {
+  hideSplash();
   if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
     try { showAuth(); } catch (_) {}
   }
@@ -217,6 +224,7 @@ onAuth(async user => {
     if (auth.currentUser) return;
     hideHome();
     hideCompleteProfile();
+    hideSplash();
     if (!gameStarted) showAuth();
     else location.reload();
   }

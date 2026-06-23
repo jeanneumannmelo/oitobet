@@ -8,13 +8,81 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:Arial,sans-serif;user-select:none;-webkit-user-select:none}
 canvas{display:block;position:fixed;left:50%;top:50%;background:#060810;-webkit-tap-highlight-color:transparent;outline:none}
-/* box-sizing reset for auth/lobby DOM overlays */
 #auth-overlay *,#lobby-overlay *{box-sizing:border-box;user-select:text;-webkit-user-select:text}
 input,button{font-family:Arial,sans-serif}
+
+/* ── Splash screen ── */
+#splash{
+  position:fixed;inset:0;z-index:9999;
+  background:radial-gradient(ellipse at 50% 40%,#0f1e0f 0%,#000 70%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:0;
+  transition:opacity .5s ease, visibility .5s ease;
+}
+#splash.hide{opacity:0;visibility:hidden;pointer-events:none}
+
+.sp-logo{
+  width:96px;height:96px;margin-bottom:28px;
+  border-radius:22px;
+  box-shadow:0 0 40px rgba(0,212,112,.25),0 8px 32px rgba(0,0,0,.7);
+  object-fit:contain;
+  animation:sp-pop .5s cubic-bezier(.34,1.56,.64,1) both;
+}
+@keyframes sp-pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+
+.sp-title{
+  font-size:28px;font-weight:900;letter-spacing:.5px;
+  color:#fff;margin-bottom:6px;
+  animation:sp-fade .5s .15s ease both;
+}
+.sp-title span{color:#00d470}
+
+.sp-sub{
+  font-size:13px;color:rgba(255,255,255,.35);
+  margin-bottom:48px;letter-spacing:.3px;
+  animation:sp-fade .5s .25s ease both;
+}
+
+@keyframes sp-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Spinner */
+.sp-spinner{
+  width:36px;height:36px;
+  border:3px solid rgba(0,212,112,.15);
+  border-top-color:#00d470;
+  border-radius:50%;
+  animation:sp-spin .75s linear infinite, sp-fade .4s .35s ease both;
+  animation-fill-mode:both;
+}
+@keyframes sp-spin{to{transform:rotate(360deg)}}
+
+/* 3 bouncing dots fallback (shows if spinner not preferred) */
+.sp-dots{display:none}
 </style>
 </head>
 <body>
+
+<!-- Splash: rendered by HTML before any JS — disappears once app is ready -->
+<div id="splash">
+  <img class="sp-logo" src="/oitobet.png" onerror="this.style.display='none'" alt="Oitobet">
+  <div class="sp-title">Oito<span>bet</span></div>
+  <div class="sp-sub">Sinuca Online Competitiva</div>
+  <div class="sp-spinner"></div>
+</div>
+
 <canvas id="c"></canvas>
 <script type="module" src="/src/main.js"></script>
+
+<script>
+// Expose hideSplash globally so main.js can call it when auth/home UI is ready.
+window.hideSplash = function(){
+  var s = document.getElementById('splash');
+  if(!s) return;
+  s.classList.add('hide');
+  setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); }, 600);
+};
+// Absolute fallback: remove splash after 10s no matter what.
+setTimeout(window.hideSplash, 10000);
+</script>
 </body>
 </html>
