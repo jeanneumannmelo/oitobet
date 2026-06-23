@@ -57,12 +57,20 @@ export async function ensureUserDoc(user, extra = {}) {
 let _redirectError = null;
 export const getStoredRedirectError = () => _redirectError;
 
-export const redirectResultPromise = getRedirectResult(auth)
+// Timeout wrapper: if getRedirectResult hangs > 5s (corrupted redirect state
+// on iOS ITP / Private Mode), resolve with null so the app can continue.
+const _redirectRace = Promise.race([
+  getRedirectResult(auth),
+  new Promise(resolve => setTimeout(() => resolve(null), 5000)),
+]);
+
+export const redirectResultPromise = _redirectRace
   .then(async result => {
     if (result?.user) {
-      // If this is a new user from Google redirect, write the doc
       const isNew = result._tokenResponse?.isNewUser ?? false;
-      await ensureUserDoc(result.user, isNew ? {} : null);
+      if (isNew) {
+        await ensureUserDoc(result.user);
+      }
     }
     return result?.user || null;
   })

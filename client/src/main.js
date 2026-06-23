@@ -188,7 +188,26 @@ function showHomeThenPlay() {
 // Safety timeout so redirectResultPromise never blocks showAuth forever on mobile.
 const _redirectTimeout = new Promise(resolve => setTimeout(resolve, 4000, null));
 
+// ── Top-level safety net ──────────────────────────────────────────────────────
+// If Firebase Auth never fires onAuthStateChanged (stuck redirect, network issue,
+// broken storage), show the login screen after 6 seconds regardless.
+let _authResolved = false;
+setTimeout(() => {
+  if (_authResolved) return;
+  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
+    try { showAuth(); } catch (_) {}
+  }
+}, 6000);
+
+// Same for JS errors — show login if nothing is on screen.
+window.addEventListener('error', () => {
+  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
+    try { showAuth(); } catch (_) {}
+  }
+});
+
 onAuth(async user => {
+  _authResolved = true;
   if (user) {
     handleLoggedIn(user);
   } else {
@@ -200,13 +219,6 @@ onAuth(async user => {
     hideCompleteProfile();
     if (!gameStarted) showAuth();
     else location.reload();
-  }
-});
-
-// Global safety net: if a JS crash happens before auth resolves, show login.
-window.addEventListener('error', () => {
-  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
-    try { showAuth(); } catch (_) {}
   }
 });
 
