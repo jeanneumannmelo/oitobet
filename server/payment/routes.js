@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
-import { adminDb } from '../firebase-admin.js';
+import { adminDb, adminAuth } from '../firebase-admin.js';
 import { verifyFirebaseToken, paymentRateLimiter } from './middleware.js';
 import {
   createPixCharge,
@@ -10,6 +10,18 @@ import {
 
 const router = Router();
 
+const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
+
+// ── Middleware admin: verifica ADMIN_SECRET no header Authorization ────────────
+function verifyAdminSecret(req, res, next) {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return res.status(503).json({ error: 'Admin não configurado.' });
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token || token !== secret) return res.status(401).json({ error: 'Não autorizado.' });
+  next();
+}
+
 // ── POST /api/payment/deposit ─────────────────────────────────────────────────
 router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (req, res) => {
   try {
@@ -18,7 +30,15 @@ router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (
       return res.status(400).json({ error: 'Valor inválido. Mín R$10, máx R$500.' });
     }
 
-    // Create pending transaction doc first to get the ID as externalId
+    // Fetch user name and CPF for PIX debtor fields
+    const [userRecord, userSnap] = await Promise.all([
+      adminAuth.getUser(req.uid),
+      adminDb.collection('users').doc(req.uid).get(),
+    ]);
+    const name = userRecord.displayName || userSnap.data()?.nickname || 'Usuário OitoBet';
+    const cpf  = userSnap.data()?.cpf || '00000000000';
+
+    // Create pending transaction doc first — its ID becomes the CartWave tag for webhook correlation
     const txRef = await adminDb.collection('transactions').add({
       uid: req.uid,
       type: 'deposit',
@@ -27,39 +47,36 @@ router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    const pix = await createPixCharge({
-      amount,
-      externalId: txRef.id,
-      description: `Depósito OitoBet R$${amount}`,
-    });
+    let pix;
+    try {
+      pix = await createPixCharge({ amount, externalId: txRef.id, cpf, name });
+    } catch (e) {
+      await txRef.update({ status: 'failed', error: e.message });
+      console.error('[deposit] createPixCharge failed:', e.message);
+      return res.status(502).json({ error: 'Erro ao gerar PIX. Tente novamente.' });
+    }
 
-    // Persist CartWave transaction id and pix code
-    // Response fields per CartWave docs: id, pix_copy_and_paste, image_base64, image_url, status
-    await txRef.update({
-      cartwaveTxId: String(pix.id || ''),
-      pixCode: pix.pix_copy_and_paste || pix.copy_and_paste || '',
-      expiresAt: pix.expiration_date || null,
-    });
+    // CartWave response fields: qr_code_id, tx_id, pix_copy_and_paste, base_64_image_url
+    const cartwaveTxId = String(pix.qr_code_id || pix.tx_id || '');
+    const pixCode      = pix.pix_copy_and_paste || '';
+    const qrCodeUrl    = pix.base_64_image_url || null;
+    const expiresAt    = pix.expiration_date || null;
 
-    res.json({
-      txId: txRef.id,
-      pixCode: pix.pix_copy_and_paste || pix.copy_and_paste || '',
-      qrCodeUrl: pix.image_url || null,
-      expiresAt: pix.expiration_date || null,
-    });
+    await txRef.update({ cartwaveTxId, pixCode, qrCodeUrl, expiresAt });
+
+    res.json({ txId: txRef.id, pixCode, qrCodeUrl, expiresAt });
   } catch (e) {
     console.error('[deposit]', e.message);
-    res.status(502).json({ error: 'Erro ao gerar PIX. Tente novamente.' });
+    res.status(500).json({ error: 'Erro interno. Tente novamente.' });
   }
 });
 
-const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
-
 // ── POST /api/payment/withdraw ────────────────────────────────────────────────
+// Saques vão para aprovação manual — admin processa via /api/admin/approve-withdrawal
 router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async (req, res) => {
   try {
-    const amount  = Number(req.body?.amount);
-    const pixKey  = String(req.body?.pixKey || '').trim();
+    const amount     = Number(req.body?.amount);
+    const pixKey     = String(req.body?.pixKey || '').trim();
     const pixKeyType = String(req.body?.pixKeyType || 'cpf').toLowerCase();
 
     if (!amount || amount < 10) {
@@ -69,55 +86,34 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
       return res.status(400).json({ error: 'Chave PIX obrigatória.' });
     }
 
-    const totalDebit = amount + WITHDRAW_FEE; // amount the user receives + fee
+    const totalDebit = amount + WITHDRAW_FEE;
 
-    // Server-side balance check via Admin SDK (never trust client)
+    // Debitar saldo atomicamente agora para evitar double-spend enquanto aguarda aprovação
     const userRef = adminDb.collection('users').doc(req.uid);
     await adminDb.runTransaction(async t => {
       const snap = await t.get(userRef);
       if (!snap.exists) throw new Error('Usuário não encontrado');
       const balance = snap.data().balance || 0;
       if (balance < totalDebit) throw new Error('INSUFFICIENT_BALANCE');
-
-      // Atomic debit: amount received by user + R$2 fee
       t.update(userRef, {
         balance: FieldValue.increment(-totalDebit),
         totalWithdrawn: FieldValue.increment(amount),
       });
     });
 
-    // Create transaction doc
     const txRef = await adminDb.collection('transactions').add({
       uid: req.uid,
       type: 'withdrawal',
-      amount,       // net amount sent to user
+      amount,
       fee: WITHDRAW_FEE,
-      totalDebit,   // amount deducted from balance
+      totalDebit,
       pixKey,
       pixKeyType,
-      status: 'pending',
+      status: 'pending_approval',
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    let cashout;
-    try {
-      cashout = await createCashout({ amount, pixKey, externalId: txRef.id });
-    } catch (e) {
-      // If CartWave fails, refund full debit (amount + fee)
-      await userRef.update({
-        balance: FieldValue.increment(totalDebit),
-        totalWithdrawn: FieldValue.increment(-amount),
-      });
-      await txRef.update({ status: 'failed', error: e.message });
-      console.error('[withdraw cashout]', e.message);
-      return res.status(502).json({ error: 'Erro ao processar saque. Saldo estornado.' });
-    }
-
-    await txRef.update({
-      cartwaveTxId: String(cashout.id || cashout.uuid || ''),
-      status: cashout.status || 'processing',
-    });
-
+    console.log(`[withdraw] pending_approval uid=${req.uid} amount=${amount} pixKey=${pixKey} txId=${txRef.id}`);
     res.json({ success: true, txId: txRef.id });
   } catch (e) {
     if (e.message === 'INSUFFICIENT_BALANCE') {
@@ -128,14 +124,95 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
   }
 });
 
+// ── POST /api/admin/approve-withdrawal/:txId ──────────────────────────────────
+router.post('/admin/approve-withdrawal/:txId', verifyAdminSecret, async (req, res) => {
+  const { txId } = req.params;
+  try {
+    const txSnap = await adminDb.collection('transactions').doc(txId).get();
+    if (!txSnap.exists) return res.status(404).json({ error: 'Transação não encontrada.' });
+
+    const tx = txSnap.data();
+    if (tx.type !== 'withdrawal') return res.status(400).json({ error: 'Não é um saque.' });
+    if (tx.status !== 'pending_approval') {
+      return res.status(409).json({ error: `Status inválido: ${tx.status}` });
+    }
+
+    let cashout;
+    try {
+      cashout = await createCashout({ amount: tx.amount, pixKey: tx.pixKey, externalId: txId });
+    } catch (e) {
+      // Estornar saldo se CartWave falhar
+      await adminDb.collection('users').doc(tx.uid).update({
+        balance: FieldValue.increment(tx.totalDebit),
+        totalWithdrawn: FieldValue.increment(-tx.amount),
+      });
+      await txSnap.ref.update({ status: 'failed', error: e.message, failedAt: FieldValue.serverTimestamp() });
+      console.error('[admin approve] cashout failed, refunded uid=%s:', tx.uid, e.message);
+      return res.status(502).json({ error: 'CartWave falhou. Saldo estornado.', detail: e.message });
+    }
+
+    const cartwaveTxId = String(cashout.id || cashout.transaction_id || '');
+    await txSnap.ref.update({
+      status: 'processing',
+      cartwaveTxId,
+      approvedAt: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`[admin approve] txId=${txId} cartwaveTxId=${cartwaveTxId}`);
+    res.json({ success: true, cartwaveTxId });
+  } catch (e) {
+    console.error('[admin approve]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ── POST /api/admin/reject-withdrawal/:txId ───────────────────────────────────
+router.post('/admin/reject-withdrawal/:txId', verifyAdminSecret, async (req, res) => {
+  const { txId } = req.params;
+  try {
+    const txSnap = await adminDb.collection('transactions').doc(txId).get();
+    if (!txSnap.exists) return res.status(404).json({ error: 'Transação não encontrada.' });
+
+    const tx = txSnap.data();
+    if (tx.type !== 'withdrawal') return res.status(400).json({ error: 'Não é um saque.' });
+    if (tx.status !== 'pending_approval') {
+      return res.status(409).json({ error: `Status inválido: ${tx.status}` });
+    }
+
+    // Estornar saldo + taxa
+    await adminDb.runTransaction(async t => {
+      t.update(adminDb.collection('users').doc(tx.uid), {
+        balance: FieldValue.increment(tx.totalDebit),
+        totalWithdrawn: FieldValue.increment(-tx.amount),
+      });
+      t.update(txSnap.ref, {
+        status: 'rejected',
+        rejectedAt: FieldValue.serverTimestamp(),
+        rejectionReason: req.body?.reason || 'Rejeitado pelo admin',
+      });
+    });
+
+    console.log(`[admin reject] txId=${txId} uid=${tx.uid} refund=${tx.totalDebit}`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[admin reject]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ── POST /api/webhooks/cartwave ───────────────────────────────────────────────
 router.post('/webhooks/cartwave', async (req, res) => {
-  // Signature verification using raw body
-  const signature = req.headers['x-signature'] || '';
   const rawBody = req.rawBody;
+  // CartWave pode usar 'hmac' ou 'x-signature' dependendo da versão
+  const signature = req.headers['hmac'] || req.headers['x-signature'] || '';
 
-  if (!rawBody || !verifyWebhookSignature(rawBody, signature)) {
-    console.warn('[webhook] invalid signature');
+  if (!rawBody) {
+    console.warn('[webhook] raw body ausente');
+    return res.status(400).json({ error: 'Body inválido' });
+  }
+
+  if (!verifyWebhookSignature(rawBody, signature)) {
+    console.warn('[webhook] assinatura inválida header=%s sig=%s...', signature ? 'presente' : 'ausente', signature.slice(0, 16));
     return res.status(401).json({ error: 'Assinatura inválida' });
   }
 
@@ -143,91 +220,92 @@ router.post('/webhooks/cartwave', async (req, res) => {
   try {
     event = JSON.parse(rawBody);
   } catch {
-    return res.status(400).json({ error: 'Body inválido' });
+    return res.status(400).json({ error: 'JSON inválido' });
   }
 
-  // CartWave event names per docs:
-  // deposit confirmed: QR_CODE_COPY_AND_PASTE_PAID or PIX_CASHIN_RECEIVED
-  // cashout success:  PIX_CASHOUT_SUCCESS
-  // cashout failed:   PIX_CASHOUT_ERROR
   const eventType = event.type || event.event || '';
-  const tag = event.tag || event.data?.tag || '';           // our Firestore txId
-  const amount = Number(event.amount || event.data?.amount || 0);
+  const tag       = event.tag || event.data?.tag || '';
+  const amount    = Number(event.amount || event.data?.amount || 0);
 
   console.log(`[webhook] event=${eventType} tag=${tag} amount=${amount}`);
 
-  try {
-    // Locate our transaction by tag (externalId we sent during creation)
-    let txDoc = null;
-    if (tag) {
-      const snap = await adminDb.collection('transactions').doc(tag).get();
-      if (snap.exists) txDoc = snap;
-    }
+  // Responder 200 imediatamente — CartWave reenvia se não receber 2xx
+  res.status(200).json({ ok: true });
 
-    // Fallback: search by cartwaveTxId if tag not present
-    if (!txDoc) {
-      const cartwaveTxId = String(event.id || event.transaction_id || '');
-      if (cartwaveTxId) {
-        const q = await adminDb.collection('transactions')
-          .where('cartwaveTxId', '==', cartwaveTxId)
-          .limit(1)
-          .get();
-        if (!q.empty) txDoc = q.docs[0];
-      }
-    }
-
-    if (!txDoc) {
-      console.warn('[webhook] transaction not found for event:', eventType, tag);
-      return res.status(200).json({ ok: true }); // Return 200 so CartWave doesn't retry forever
-    }
-
-    const tx = txDoc.data();
-
-    // Idempotency guard
-    if (tx.status === 'completed') {
-      return res.status(200).json({ ok: true, skipped: true });
-    }
-
-    const userRef = adminDb.collection('users').doc(tx.uid);
-
-    if (eventType === 'QR_CODE_COPY_AND_PASTE_PAID' || eventType === 'PIX_CASHIN_RECEIVED') {
-      await adminDb.runTransaction(async t => {
-        t.update(userRef, {
-          balance: FieldValue.increment(amount),
-          totalDeposited: FieldValue.increment(amount),
-        });
-        t.update(txDoc.ref, { status: 'completed', completedAt: FieldValue.serverTimestamp() });
-      });
-      console.log(`[webhook] deposit confirmed uid=${tx.uid} amount=${amount}`);
-
-    } else if (eventType === 'PIX_CASHOUT_SUCCESS') {
-      await txDoc.ref.update({ status: 'completed', completedAt: FieldValue.serverTimestamp() });
-      console.log(`[webhook] cashout success uid=${tx.uid} amount=${amount}`);
-
-    } else if (eventType === 'PIX_CASHOUT_ERROR' || eventType === 'PIX_CASHOUT_CANCELED') {
-      // Estorno: refund amount + fee (totalDebit)
-      const totalDebit = tx.totalDebit || (tx.amount + (tx.fee || 0));
-      await adminDb.runTransaction(async t => {
-        t.update(userRef, {
-          balance: FieldValue.increment(totalDebit),
-          totalWithdrawn: FieldValue.increment(-tx.amount),
-        });
-        t.update(txDoc.ref, { status: 'failed', failedAt: FieldValue.serverTimestamp() });
-      });
-      console.log(`[webhook] cashout failed — refund uid=${tx.uid} amount=${totalDebit}`);
-    } else {
-      console.log(`[webhook] unhandled event: ${eventType}`);
-    }
-
-    res.status(200).json({ ok: true });
-  } catch (e) {
-    console.error('[webhook] processing error', e.message);
-    res.status(500).json({ error: 'Erro interno' });
-  }
+  // Processar de forma assíncrona para não bloquear a resposta
+  processWebhookEvent({ eventType, tag, amount, event }).catch(e => {
+    console.error('[webhook] processamento assíncrono falhou:', e.message);
+  });
 });
 
+async function processWebhookEvent({ eventType, tag, amount, event }) {
+  // 1. Localizar transação pelo tag (externalId que enviamos na criação)
+  let txDoc = null;
+  if (tag) {
+    const snap = await adminDb.collection('transactions').doc(tag).get();
+    if (snap.exists) txDoc = snap;
+  }
+
+  // 2. Fallback: buscar por cartwaveTxId
+  if (!txDoc) {
+    const cartwaveTxId = String(event.id || event.transaction_id || event.qr_code_id || '');
+    if (cartwaveTxId) {
+      const q = await adminDb.collection('transactions')
+        .where('cartwaveTxId', '==', cartwaveTxId)
+        .limit(1)
+        .get();
+      if (!q.empty) txDoc = q.docs[0];
+    }
+  }
+
+  if (!txDoc) {
+    console.warn('[webhook] transação não encontrada event=%s tag=%s', eventType, tag);
+    return;
+  }
+
+  const tx = txDoc.data();
+
+  // Idempotência
+  if (tx.status === 'completed' || tx.status === 'failed' || tx.status === 'rejected') {
+    console.log('[webhook] ignorado — status já final:', tx.status);
+    return;
+  }
+
+  const userRef = adminDb.collection('users').doc(tx.uid);
+
+  // Depósito confirmado
+  if (eventType === 'QR_CODE_COPY_AND_PASTE_PAID' || eventType === 'PIX_CASHIN_RECEIVED') {
+    await adminDb.runTransaction(async t => {
+      t.update(userRef, {
+        balance: FieldValue.increment(amount),
+        totalDeposited: FieldValue.increment(amount),
+      });
+      t.update(txDoc.ref, { status: 'completed', completedAt: FieldValue.serverTimestamp() });
+    });
+    console.log(`[webhook] depósito confirmado uid=${tx.uid} amount=${amount}`);
+
+  // Cashout concluído (após aprovação admin)
+  } else if (eventType === 'PIX_CASHOUT_SUCCESS' || eventType === 'CASHOUT_COMPLETED') {
+    await txDoc.ref.update({ status: 'completed', completedAt: FieldValue.serverTimestamp() });
+    console.log(`[webhook] cashout concluído uid=${tx.uid} amount=${amount}`);
+
+  // Cashout falhou (CartWave rejeitou após aprovação admin)
+  } else if (eventType === 'PIX_CASHOUT_ERROR' || eventType === 'PIX_CASHOUT_CANCELED' || eventType === 'CASHOUT_FAILED') {
+    const totalDebit = tx.totalDebit || (tx.amount + (tx.fee || 0));
+    await adminDb.runTransaction(async t => {
+      t.update(userRef, {
+        balance: FieldValue.increment(totalDebit),
+        totalWithdrawn: FieldValue.increment(-tx.amount),
+      });
+      t.update(txDoc.ref, { status: 'failed', failedAt: FieldValue.serverTimestamp() });
+    });
+    console.log(`[webhook] cashout falhou — estorno uid=${tx.uid} totalDebit=${totalDebit}`);
+  } else {
+    console.log(`[webhook] evento não tratado: ${eventType}`);
+  }
+}
+
 // ── POST /api/game/debit-bet ──────────────────────────────────────────────────
-// Debits the bet amount before a game starts. Server-side to prevent cheating.
 router.post('/game/debit-bet', verifyFirebaseToken, async (req, res) => {
   const betAmount = Number(req.body?.betAmount);
   if (!betAmount || betAmount <= 0 || betAmount > 10000) {
@@ -252,7 +330,6 @@ router.post('/game/debit-bet', verifyFirebaseToken, async (req, res) => {
 });
 
 // ── POST /api/game/finalize ───────────────────────────────────────────────────
-// Called after a bot game ends. Updates balance, wins/losses, XP, daily stats.
 router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
   const { playerWon, betAmount = 0, xpGain = 50 } = req.body || {};
   if (typeof playerWon !== 'boolean') return res.status(400).json({ error: 'playerWon obrigatório.' });

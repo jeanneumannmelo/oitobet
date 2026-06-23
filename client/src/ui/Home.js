@@ -1230,7 +1230,7 @@ async function handleWithdraw(el) {
     const data = await res.json();
     if (!res.ok) { showToast(data.error || 'Erro no saque', 'error'); return; }
 
-    showToast(`Saque de ${fmtBRL(val)} solicitado! Processamento em até 24h.`, 'success');
+    showToast(`Saque de ${fmtBRL(val)} em análise. Será processado em até 48h após aprovação.`, 'success');
     // Refresh profile balance
     if (auth.currentUser) {
       const updated = await getProfile(auth.currentUser.uid);

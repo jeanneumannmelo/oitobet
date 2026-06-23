@@ -24,8 +24,16 @@ const io = new Server(http, {
 });
 
 // Capture raw body for HMAC webhook verification via express.json verify hook
-// Temp diagnostics — mounted before all routes so static serving doesn't catch them
-app.get('/_diag/ip', async (_req, res) => {
+// Diagnostic endpoints — protected by DIAG_SECRET header
+const diagAuth = (req, res, next) => {
+  const secret = process.env.DIAG_SECRET;
+  if (!secret || req.headers['x-diag-secret'] !== secret) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+};
+
+app.get('/_diag/ip', diagAuth, async (_req, res) => {
   try {
     const { ProxyAgent, fetch: undiciFetch } = await import('undici');
     const fixieUrl = process.env.FIXIE_URL;
@@ -36,13 +44,13 @@ app.get('/_diag/ip', async (_req, res) => {
     res.json({ ...(await r.json()), via_fixie: !!agent, fixie_configured: !!fixieUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/_diag/cartwave', async (_req, res) => {
+app.get('/_diag/cartwave', diagAuth, async (_req, res) => {
   try {
     const balance = await getAccountBalance();
     res.json({ ok: true, balance });
   } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
-app.get('/_diag/cartwave-noproxy', async (_req, res) => {
+app.get('/_diag/cartwave-noproxy', diagAuth, async (_req, res) => {
   try {
     const BASE = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
     const r = await fetch(`${BASE}/v2/finance/auth-token/`, {
@@ -53,7 +61,7 @@ app.get('/_diag/cartwave-noproxy', async (_req, res) => {
     res.json({ status: r.status, has_token: !!data?.access_token, data });
   } catch(e) { res.status(502).json({ ok: false, error: e.message }); }
 });
-app.get('/_diag/pix', async (_req, res) => {
+app.get('/_diag/pix', diagAuth, async (_req, res) => {
   try {
     const steps = await diagPix();
     const ok = steps.pix?.status >= 200 && steps.pix?.status < 300;
