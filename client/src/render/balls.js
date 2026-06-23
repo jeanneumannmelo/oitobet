@@ -53,14 +53,13 @@ export function drawBall(b) {
   }
   ctx.fill();
 
-  // Rolling rotation values
+  // Rolling rotation: stripe rotates with movement, number stays upright
   const rollAng = b.roll || 0;
-  const moveAng = (b.vx || b.vy) ? Math.atan2(b.vy, b.vx) : 0;
 
   // ── Stripe band ───────────────────────────────────────────────────────────
   if (stripe) {
     ctx.save();
-    ctx.translate(x, y); ctx.rotate(moveAng + rollAng); ctx.translate(-x, -y);
+    ctx.translate(x, y); ctx.rotate(rollAng); ctx.translate(-x, -y);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
     const sg = ctx.createRadialGradient(x - r * 0.28, y - r * 0.32, 0, x, y, r);
     sg.addColorStop(0, lighter(hex, 58));
@@ -71,10 +70,10 @@ export function drawBall(b) {
     ctx.restore();
   }
 
-  // ── Number circle (white disc) ─────────────────────────────────────────────
+  // ── Number circle (white disc) — always upright ────────────────────────────
   if (!cue) {
     ctx.save();
-    ctx.translate(x, y); ctx.rotate(moveAng + rollAng); ctx.translate(-x, -y);
+    ctx.translate(x, y); ctx.rotate(0); ctx.translate(-x, -y);
     ctx.beginPath(); ctx.arc(x, y, r * 0.44, 0, Math.PI * 2);
     // White disc with subtle 3D shading
     const dg = ctx.createRadialGradient(x - r * 0.12, y - r * 0.12, 0, x, y, r * 0.44);

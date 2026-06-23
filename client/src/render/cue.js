@@ -65,9 +65,9 @@ export function drawCue() {
 
   // ── Cue stick ───────────────────────────────────────────────────────────────
   const tipGap  = BR + 3.5 + S.pullBack;
-  const cueLen  = 300;
-  const tipW    = 2.2;   // half-width at tip (ferrule)
-  const buttW   = 8.5;   // half-width at butt
+  const cueLen  = 320;
+  const tipW    = 2.8;   // half-width at tip (ferrule)
+  const buttW   = 10.5;  // half-width at butt
 
   // Tip position (near ball) and butt position (far)
   const tx = bx - dx * tipGap,       ty = by - dy * tipGap;
@@ -143,23 +143,75 @@ export function drawCue() {
   ctx.closePath();
   ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 0.8; ctx.stroke();
 
+  // ── Decorative inlay panel (mid-section) ──────────────────────────────────
+  const inlayT0 = 0.32, inlayT1 = 0.52;
+  const inlayFn = t => ({
+    x: bux + (fx - bux) * t,
+    y: buy + (fy - buy) * t,
+    w: buttW + (tipW - buttW) * t,
+  });
+  const il0 = inlayFn(inlayT0), il1 = inlayFn(inlayT1);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(bux + px * buttW, buy + py * buttW);
+  ctx.lineTo(fx  + px * tipW,  fy  + py * tipW);
+  ctx.lineTo(fx  - px * tipW,  fy  - py * tipW);
+  ctx.lineTo(bux - px * buttW, buy - py * buttW);
+  ctx.closePath(); ctx.clip();
+  ctx.beginPath();
+  ctx.moveTo(il0.x + px * il0.w, il0.y + py * il0.w);
+  ctx.lineTo(il1.x + px * il1.w, il1.y + py * il1.w);
+  ctx.lineTo(il1.x - px * il1.w, il1.y - py * il1.w);
+  ctx.lineTo(il0.x - px * il0.w, il0.y - py * il0.w);
+  ctx.closePath();
+  const ig = ctx.createLinearGradient(il0.x - px * il0.w, il0.y - py * il0.w, il0.x + px * il0.w, il0.y + py * il0.w);
+  ig.addColorStop(0,   'rgba(0,0,0,0.5)');
+  ig.addColorStop(0.2, cue.colors.rings[0] + 'aa');
+  ig.addColorStop(0.5, cue.colors.rings[1] + 'cc');
+  ig.addColorStop(0.8, cue.colors.rings[0] + 'aa');
+  ig.addColorStop(1,   'rgba(0,0,0,0.5)');
+  ctx.fillStyle = ig; ctx.fill();
+  ctx.restore();
+
   // ── Wrap rings near butt end ───────────────────────────────────────────────
-  const ringPositions = [0.08, 0.13, 0.18, 0.23, 0.27, 0.31]; // 6 rings near butt
+  const ringPositions = [0.055, 0.095, 0.14, 0.185, 0.225, 0.265, 0.305];
   ringPositions.forEach((t, i) => {
-    const w = buttW + (tipW - buttW) * t; // interpolated half-width
+    const w = buttW + (tipW - buttW) * t;
     const rX = bux + (fx - bux) * t;
     const rY = buy + (fy - buy) * t;
-    // Draw perpendicular stripe
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(rX + px * (w + 2.5), rY + py * (w + 2.5));
-    ctx.lineTo(rX - px * (w + 2.5), rY - py * (w + 2.5));
+    ctx.moveTo(rX + px * (w + 3), rY + py * (w + 3));
+    ctx.lineTo(rX - px * (w + 3), rY - py * (w + 3));
     ctx.strokeStyle = i % 2 === 0 ? cue.colors.rings[0] : cue.colors.rings[1];
-    ctx.lineWidth = 4 - i * 0.3;
+    ctx.lineWidth = i < 2 ? 5 : 3.5 - i * 0.3;
     ctx.lineCap = 'round';
     ctx.stroke();
     ctx.restore();
   });
+
+  // ── Grip texture (hatched lines on lower butt) ─────────────────────────────
+  const gripT0 = 0.54, gripT1 = 0.80;
+  const gp0 = inlayFn(gripT0), gp1 = inlayFn(gripT1);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(bux + px * buttW, buy + py * buttW);
+  ctx.lineTo(fx  + px * tipW,  fy  + py * tipW);
+  ctx.lineTo(fx  - px * tipW,  fy  - py * tipW);
+  ctx.lineTo(bux - px * buttW, buy - py * buttW);
+  ctx.closePath(); ctx.clip();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = 'rgba(0,0,0,0.9)'; ctx.lineWidth = 1.2;
+  const steps = 10;
+  for (let i = 0; i <= steps; i++) {
+    const t = gripT0 + (gripT1 - gripT0) * (i / steps);
+    const {x: rx, y: ry, w: rw} = inlayFn(t);
+    ctx.beginPath();
+    ctx.moveTo(rx + px * rw, ry + py * rw);
+    ctx.lineTo(rx - px * rw, ry - py * rw);
+    ctx.stroke();
+  }
+  ctx.restore();
 
   // ── Ferrule (white band near tip) ─────────────────────────────────────────
   ctx.beginPath();

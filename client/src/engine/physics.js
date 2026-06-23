@@ -13,7 +13,7 @@ export function step() {
     if (b.out) continue;
     b.x += b.vx; b.y += b.vy;
     const spd0 = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-    if (spd0 > 0.05) b.roll = (b.roll || 0) + spd0 / BR;
+    if (spd0 > 0.05) b.roll = (b.roll || 0) + b.vx / BR; // directional: positive=right, negative=left
     b.vx *= FRIC; b.vy *= FRIC;
     if (Math.abs(b.vx) < 0.012) b.vx = 0;
     if (Math.abs(b.vy) < 0.012) b.vy = 0;
