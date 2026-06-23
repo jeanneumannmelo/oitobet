@@ -2,20 +2,58 @@ import { S } from '../state.js';
 import { getBall } from '../utils.js';
 import { sndCueStrike } from '../audio/sounds.js';
 
-const BOT_AIM_FRAMES  = 45;
-const BOT_THINK_MIN   = 2.5 * 60;
-const BOT_THINK_MAX   = 5.0 * 60;
+// ── Bot Profiles ───────────────────────────────────────────────────────────────
+// S.betAmount === 0 → FREE (razoável, humano imperfeito)
+// S.betAmount  > 0 → PAID (quase profissional, ainda humano)
 
-const BOT_THINK_MIN_HARD = 0.6 * 60;
-const BOT_THINK_MAX_HARD = 1.2 * 60;
+const PROFILE_FREE = {
+  aimErr:           0.052,
+  wobbleScale:      0.13,
+  thinkMinSec:      2.2,
+  thinkMaxSec:      5.8,
+  cutPenalty:       340,
+  lookahead:        false,
+  safetyChance:     0.18,
+  suboptimalChance: 0.22,
+  extraCutErr:      0.065,
+  powerVariance:    0.08,
+  placePrecision:   5,
+  surveyChance:     0.22,
+  commitBase:       0.016,
+  commitProg:       0.042,
+};
 
-function botThinkDelay() {
-  if (S.botDifficulty >= 5) {
-    return Math.round(BOT_THINK_MIN_HARD + Math.random() * (BOT_THINK_MAX_HARD - BOT_THINK_MIN_HARD));
-  }
-  return Math.round(BOT_THINK_MIN + Math.random() * (BOT_THINK_MAX - BOT_THINK_MIN));
+const PROFILE_PAID = {
+  aimErr:           0.004,
+  wobbleScale:      0.022,
+  thinkMinSec:      1.6,
+  thinkMaxSec:      3.8,
+  cutPenalty:       160,
+  lookahead:        true,
+  safetyChance:     0.04,
+  suboptimalChance: 0.0,
+  extraCutErr:      0.0,
+  powerVariance:    0.012,
+  placePrecision:   9,
+  surveyChance:     0.06,
+  commitBase:       0.07,
+  commitProg:       0.15,
+};
+
+function getBotProfile() {
+  return S.betAmount > 0 ? PROFILE_PAID : PROFILE_FREE;
 }
 
+// ── Estado interno do bot para o turno atual ───────────────────────────────────
+let _profile      = null;
+let _targetAng    = 0;
+let _targetPow    = 0;
+let _thinkTotal   = 0;
+let _decoyAng     = null;
+let _shotChosen   = false;
+let _cutAngle     = 0;
+
+// ── Helpers geométricos ────────────────────────────────────────────────────────
 function angDiff(a, b) {
   return ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
 }
@@ -45,24 +83,18 @@ function ghostClear(gx, gy, excludeId) {
   return true;
 }
 
-// Estimate scratch risk — reduced conservativeness vs old version
 function scratchRisk(cbX, cbY, gx, gy, shotAng, cutAng) {
-  const extDist = 180; // was 320 — more realistic cue ball travel after contact
-
-  // Straight-through model (small cut angle)
+  const extDist = 180;
   if (cutAng < 0.50) {
     const ex = gx + Math.cos(shotAng) * extDist;
     const ey = gy + Math.sin(shotAng) * extDist;
     for (const p of S.POCKETS) {
-      if (ptSegDist(p.x, p.y, gx, gy, ex, ey) < S.BR * 1.6) return true; // was 2.2
+      if (ptSegDist(p.x, p.y, gx, gy, ex, ey) < S.BR * 1.6) return true;
     }
   }
-
-  // Perpendicular deflection model (stun) — only check closest few pockets
   const nearPockets = S.POCKETS.slice().sort((a, b) =>
     Math.hypot(a.x - gx, a.y - gy) - Math.hypot(b.x - gx, b.y - gy)
   ).slice(0, 3);
-
   for (const sign of [1, -1]) {
     const perpAng = shotAng + sign * Math.PI / 2;
     const px2 = gx + Math.cos(perpAng) * extDist;
@@ -71,11 +103,9 @@ function scratchRisk(cbX, cbY, gx, gy, shotAng, cutAng) {
       if (ptSegDist(p.x, p.y, gx, gy, px2, py2) < S.BR * 1.6) return true;
     }
   }
-
   return false;
 }
 
-// Estimate cue ball end position after a stun shot.
 function estimateCbEnd(gx, gy, shotAng, power) {
   const dist = power * 110;
   for (const sign of [1, -1]) {
@@ -90,7 +120,9 @@ function estimateCbEnd(gx, gy, shotAng, power) {
   return { x: S.PX + S.PW / 2, y: S.PY + S.PH / 2 };
 }
 
+// ── Avaliação de tacada ────────────────────────────────────────────────────────
 function evalShot(cb, tb, pocket, relaxed = false) {
+  const prof = _profile || getBotProfile();
   const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
   const gx = tb.x - Math.cos(angTP) * S.BR * 2;
   const gy = tb.y - Math.sin(angTP) * S.BR * 2;
@@ -100,29 +132,24 @@ function evalShot(cb, tb, pocket, relaxed = false) {
   if (!pathClear(tb.x, tb.y, pocket.x, pocket.y, [tb.id])) return -Infinity;
   if (!pathClear(cb.x, cb.y, gx, gy, [0, tb.id])) return -Infinity;
   const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
-  const cutAng = Math.abs(angDiff(angTP, shotAng));
+  const cutAng  = Math.abs(angDiff(angTP, shotAng));
   if (cutAng > Math.PI / 2) return -Infinity;
-
-  // Skip scratch check in relaxed mode (fallback search)
   if (!relaxed && scratchRisk(cb.x, cb.y, gx, gy, shotAng, cutAng)) return -Infinity;
 
   const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
-  const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-
-  const maxPow = S.botDifficulty >= 5 ? 1.0 : 0.92;
-  const power = Math.min(maxPow, Math.max(0.28, (cueDist + tbDist) / 360));
-  const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
+  const tbDist  = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
+  const power   = Math.min(0.98, Math.max(0.28, (cueDist + tbDist) / 360));
+  const cbEnd   = estimateCbEnd(gx, gy, shotAng, power);
   const cx = S.PX + S.PW / 2, cy = S.PY + S.PH / 2;
-  const centerDist = Math.hypot(cbEnd.x - cx, cbEnd.y - cy);
-  const posBonus = Math.max(0, 220 - centerDist * 0.45); // increased from 180
+  const posBonus = Math.max(0, 220 - Math.hypot(cbEnd.x - cx, cbEnd.y - cy) * 0.45);
 
-  // Difficulty 5: lower cut penalty — a pro can make any cut
-  const cutPenalty = S.botDifficulty >= 5 ? 180 : 280;
-  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * cutPenalty + posBonus;
+  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * prof.cutPenalty + posBonus;
 }
 
+// ── Lookahead (só PAID) ────────────────────────────────────────────────────────
 function lookAheadBonus(gx, gy, shotAng, power, targets) {
-  if (S.botDifficulty < 4) return 0;
+  const prof = _profile || getBotProfile();
+  if (!prof.lookahead) return 0;
   const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
   let bestNext = -Infinity;
   const mockCb = { x: cbEnd.x, y: cbEnd.y };
@@ -132,36 +159,62 @@ function lookAheadBonus(gx, gy, shotAng, power, targets) {
       if (s > bestNext) bestNext = s;
     }
   }
-  // Difficulty 5: much higher lookahead weight — plan ahead aggressively
-  const scale = S.botDifficulty >= 5 ? 0.40 : 0.12;
-  const cap   = S.botDifficulty >= 5 ? 600  : 160;
-  return bestNext > 0 ? Math.min(bestNext * scale, cap) : 0;
+  return bestNext > 0 ? Math.min(bestNext * 0.38, 580) : 0;
 }
 
+// ── Safety shot ────────────────────────────────────────────────────────────────
+function buildSafetyShot(cb) {
+  const walls = [
+    { x: S.PX + S.PW / 2, y: S.PY },
+    { x: S.PX + S.PW / 2, y: S.PY + S.PH },
+    { x: S.PX,             y: S.PY + S.PH / 2 },
+    { x: S.PX + S.PW,     y: S.PY + S.PH / 2 },
+  ];
+  const wall = walls[Math.floor(Math.random() * walls.length)];
+  const ang  = Math.atan2(wall.y - cb.y, wall.x - cb.x);
+  const pow  = 0.35 + Math.random() * 0.22;
+  return { ang, pow, score: -9000, isSafety: true, cutAngle: 0, cueDist: 200 };
+}
+
+// ── Decoy angle para survey ────────────────────────────────────────────────────
+function pickDecoyAngle(cb, realAng) {
+  const others = S.balls.filter(b => !b.out && b.id !== 0);
+  if (others.length === 0) return null;
+  const candidates = others.filter(b => {
+    const a = Math.atan2(b.y - cb.y, b.x - cb.x);
+    return Math.abs(angDiff(a, realAng)) > 0.35;
+  });
+  if (candidates.length === 0) return null;
+  const decoy = candidates[Math.floor(Math.random() * candidates.length)];
+  return Math.atan2(decoy.y - cb.y, decoy.x - cb.x);
+}
+
+// ── Seleção de tacada ──────────────────────────────────────────────────────────
 function botChooseShot() {
+  const prof = _profile || getBotProfile();
   const cb = S.balls[0];
   if (!cb || cb.out) return null;
 
-  // Opening break: hit the closest racked ball at max power
+  // Abertura: quebra
   if (S.quebra) {
     const racked = S.balls.filter(b => !b.out && b.id !== 0);
     if (racked.length > 0) {
-      const apex = racked.reduce((closest, b) =>
-        Math.hypot(b.x - cb.x, b.y - cb.y) < Math.hypot(closest.x - cb.x, closest.y - cb.y) ? b : closest
+      const apex = racked.reduce((c, b) =>
+        Math.hypot(b.x - cb.x, b.y - cb.y) < Math.hypot(c.x - cb.x, c.y - cb.y) ? b : c
       );
       const ang = Math.atan2(apex.y - cb.y, apex.x - cb.x);
-      const err = S.botDifficulty >= 5 ? 0.003 : 0.06;
-      return { ang: ang + (Math.random() - 0.5) * 2 * err, pow: 1.0, score: 9999 };
+      return { ang: ang + (Math.random() - 0.5) * 2 * prof.aimErr * 0.06, pow: 1.0, score: 9999, cutAngle: 0, cueDist: 150 };
     }
   }
 
+  // Determinar bolas alvo
   const botType = S.tipos[S.BOT];
   let targets;
   if (botType === null) {
     targets = S.balls.filter(b => !b.out && b.id !== 0 && b.id !== 8);
   } else {
     const myIds = botType === 'solid' ? [1,2,3,4,5,6,7] : [9,10,11,12,13,14,15];
-    const rem = myIds.filter(id => !S.potJogador[S.BOT].includes(id) && getBall(id) && !getBall(id).out);
+    const rem   = myIds.filter(id => !S.potJogador[S.BOT].includes(id) && getBall(id) && !getBall(id).out);
     if (rem.length === 0) {
       const b8 = getBall(8);
       targets = b8 && !b8.out ? [b8] : [];
@@ -170,75 +223,95 @@ function botChooseShot() {
     }
   }
 
-  let best = null, bestScore = -Infinity;
+  // Safety play antes de avaliar shots
+  if (Math.random() < prof.safetyChance) return buildSafetyShot(cb);
+
+  // Avaliar todos os shots
+  const candidates = [];
   targets.forEach(tb => {
     S.POCKETS.forEach(pocket => {
       const baseScore = evalShot(cb, tb, pocket);
       if (baseScore === -Infinity) return;
 
-      const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
-      const gx = tb.x - Math.cos(angTP) * S.BR * 2;
-      const gy = tb.y - Math.sin(angTP) * S.BR * 2;
+      const angTP   = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
+      const gx      = tb.x - Math.cos(angTP) * S.BR * 2;
+      const gy      = tb.y - Math.sin(angTP) * S.BR * 2;
       const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
       const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
-      const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-      const maxPow = S.botDifficulty >= 5 ? 1.0 : 0.92;
-      const power = Math.min(maxPow, Math.max(0.28, (cueDist + tbDist) / 360));
-
-      const remaining = targets.filter(t => t.id !== tb.id);
-      const score = baseScore + lookAheadBonus(gx, gy, shotAng, power, remaining);
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = { ang: shotAng, pow: power, score };
-      }
+      const tbDist  = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
+      const power   = Math.min(0.98, Math.max(0.28, (cueDist + tbDist) / 360));
+      const cutAng  = Math.abs(angDiff(angTP, shotAng));
+      const rem     = targets.filter(t => t.id !== tb.id);
+      const score   = baseScore + lookAheadBonus(gx, gy, shotAng, power, rem);
+      candidates.push({ ang: shotAng, pow: power, score, cutAngle: cutAng, cueDist });
     });
   });
 
-  // Relaxed fallback: ignore scratch risk to find any valid shot
-  if (!best && targets.length > 0) {
+  // Fallback relaxado (ignora risco de encaçapar branca)
+  if (candidates.length === 0 && targets.length > 0) {
     targets.forEach(tb => {
       S.POCKETS.forEach(pocket => {
-        const baseScore = evalShot(cb, tb, pocket, true); // relaxed=true
+        const baseScore = evalShot(cb, tb, pocket, true);
         if (baseScore === -Infinity) return;
-        const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
-        const gx = tb.x - Math.cos(angTP) * S.BR * 2;
-        const gy = tb.y - Math.sin(angTP) * S.BR * 2;
+        const angTP   = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
+        const gx      = tb.x - Math.cos(angTP) * S.BR * 2;
+        const gy      = tb.y - Math.sin(angTP) * S.BR * 2;
         const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
         const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
-        const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-        const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
-        const score = baseScore - 500; // penalize relaxed shots
-        if (score > bestScore) {
-          bestScore = score;
-          best = { ang: shotAng, pow: power, score };
-        }
+        const tbDist  = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
+        const power   = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+        const cutAng  = Math.abs(angDiff(angTP, shotAng));
+        candidates.push({ ang: shotAng, pow: power, score: baseScore - 500, cutAngle: cutAng, cueDist });
       });
     });
   }
 
-  // Last resort: aim at nearest ball
-  if (!best && targets.length > 0) {
+  // Último recurso: bola mais próxima
+  if (candidates.length === 0 && targets.length > 0) {
     const nearest = targets.reduce((a, b) =>
       Math.hypot(b.x - cb.x, b.y - cb.y) < Math.hypot(a.x - cb.x, a.y - cb.y) ? b : a
     );
-    best = { ang: Math.atan2(nearest.y - cb.y, nearest.x - cb.x), pow: 0.7, score: -1 };
+    return { ang: Math.atan2(nearest.y - cb.y, nearest.x - cb.x), pow: 0.7, score: -1, cutAngle: 0.5, cueDist: 200 };
   }
+  if (candidates.length === 0) return null;
 
-  // Aim error — difficulty 5 is near-perfect
-  const errByDiff = [0, 0.18, 0.10, 0.05, 0.018, 0.0003];
-  const err = errByDiff[Math.min(5, Math.max(1, S.botDifficulty))] || 0.08;
-  if (best) best.ang += (Math.random() - 0.5) * 2 * err;
-  return best;
+  // Ordenar por score
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Escolha sub-ótima (só FREE)
+  let chosen = candidates[0];
+  if (prof.suboptimalChance > 0 && candidates.length > 1 && Math.random() < prof.suboptimalChance) {
+    const idx = Math.min(candidates.length - 1, 1 + Math.floor(Math.random() * 2));
+    chosen = candidates[idx];
+  }
+  return chosen;
 }
 
+// ── Think time adaptativo ──────────────────────────────────────────────────────
+function calcThinkFrames(prof, cutAngle, cueDist) {
+  const base  = (prof.thinkMinSec + Math.random() * (prof.thinkMaxSec - prof.thinkMinSec)) * 60;
+  const extra = cutAngle * 55 + (cueDist || 150) * 0.08;
+  return Math.round(Math.min(base + extra, prof.thinkMaxSec * 1.4 * 60));
+}
+
+// ── Wobble multi-frequência ────────────────────────────────────────────────────
+function calcWobble(t, amp) {
+  return (
+    Math.sin(t * 0.028) * amp * 0.55 +
+    Math.sin(t * 0.072) * amp * 0.32 +
+    Math.sin(t * 0.19 ) * amp * 0.13
+  );
+}
+
+// ── Posicionamento de bola (ball in hand) ──────────────────────────────────────
 function botPlaceBall() {
-  const cb = S.balls[0];
+  const prof = getBotProfile();
+  const cb   = S.balls[0];
   if (!cb) return;
   cb.out = false; cb.vx = 0; cb.vy = 0;
-  let bestScore = -Infinity, bestX = S.PX + S.PW * 0.26, bestY = S.PY + S.PH / 2;
-  // Finer grid for difficulty 5
-  const step2 = S.botDifficulty >= 5 ? S.PH / 8 : S.PH / 5;
+  let bestScore = -Infinity;
+  let bestX = S.PX + S.PW * 0.26, bestY = S.PY + S.PH / 2;
+  const step2 = S.PH / prof.placePrecision;
   for (let tx = S.PX + S.BR * 2; tx < S.PX + S.PW - S.BR * 2; tx += step2) {
     for (let ty = S.PY + S.BR * 2; ty < S.PY + S.PH - S.BR * 2; ty += step2) {
       let ok = true;
@@ -257,78 +330,145 @@ function botPlaceBall() {
   S.estado = 'mira'; S.msgTxt = ''; S.msgFlash = 0;
 }
 
+// ── botTick principal ──────────────────────────────────────────────────────────
 export function botTick() {
+
+  // Ball in hand: posicionar e depois pensar
   if (S.estado === 'ballInHand') {
     if (S.botDelay > 0) { S.botDelay--; return; }
+    _profile = getBotProfile();
     botPlaceBall();
-    S.botDelay = botThinkDelay(); S.botAimPhase = 0; S.botAimTick = 0; S.botFakeTarget = 0;
+    _shotChosen = false; _decoyAng = null;
+    S.botDelay  = calcThinkFrames(_profile, 0.3, 200);
+    _thinkTotal = S.botDelay;
+    S.botAimPhase = 0; S.botAimTick = 0; S.botFakeTarget = 0;
     return;
   }
+
   if (S.estado !== 'mira') return;
 
+  // ── FASE 0: THINKING ──────────────────────────────────────────────────────
   if (S.botAimPhase === 0) {
+
+    if (!_shotChosen) {
+      _profile   = getBotProfile();
+      const shot = botChooseShot();
+      if (!shot) { S.turn = 1 - S.turn; return; }
+
+      _targetAng = shot.ang;
+      _targetPow = shot.pow;
+      _cutAngle  = shot.cutAngle || 0;
+      _shotChosen = true;
+
+      S.botDelay  = calcThinkFrames(_profile, _cutAngle, shot.cueDist || 150);
+      _thinkTotal = S.botDelay;
+
+      _decoyAng = (Math.random() < _profile.surveyChance)
+        ? pickDecoyAngle(S.balls[0], _targetAng)
+        : null;
+
+      S.botAimTick = 0;
+      S.botFakeTarget = 1;
+      S.power    = 0;
+      S.pullBack = 0;
+    }
+
     if (S.botDelay > 0) {
       S.botDelay--;
+      const progress = 1 - S.botDelay / _thinkTotal;
 
-      if (S.botFakeTarget === 0) {
-        const shot = botChooseShot();
-        if (shot) { S.botTargetAng = shot.ang; S.botTargetPow = shot.pow; }
-        S.botFakeTarget = 1;
-        S.botFakeLinger = S.botDelay + 1;
+      // Survey: primeiros 38% apontam para decoy
+      let visualTarget;
+      if (_decoyAng !== null && progress < 0.38) {
+        const fade = progress / 0.38;
+        visualTarget = _decoyAng + angDiff(_decoyAng, _targetAng) * fade * 0.4;
+      } else {
+        visualTarget = _targetAng;
       }
 
-      if (S.botFakeLinger > 0) {
-        const progress = 1 - S.botDelay / S.botFakeLinger;
+      const decayedAmp = _profile.wobbleScale * Math.max(0, 1 - progress * 1.1);
+      const wobble     = calcWobble(S.botAimTick, decayedAmp);
+      const aimTarget  = visualTarget + wobble;
+      const diff       = angDiff(S.aimAng, aimTarget);
+      const spd        = _profile.commitBase + progress * _profile.commitProg;
+      S.aimAng        += diff * spd;
 
-        const wobbleScale = S.botDifficulty >= 5 ? 0.008 : 0.10; // near-zero wobble at diff 5
-        const amp = wobbleScale * (1 - progress * 0.85);
-        const wobble = Math.sin(S.botAimTick * 0.11) * amp
-                     + Math.cos(S.botAimTick * 0.065) * amp * 0.45;
-
-        const targetAngle = S.botTargetAng + wobble;
-        const diff = angDiff(S.aimAng, targetAngle);
-
-        const commitSpeed = S.botDifficulty >= 5 ? 0.08 + progress * 0.12 : 0.014 + progress * 0.038;
-        S.aimAng += diff * commitSpeed;
-
-        S.power    = S.botTargetPow * Math.min(progress * 1.8, 1) * 0.60;
-        S.pullBack = S.power * 42;
-      }
+      S.power    = _targetPow * Math.min(progress * 1.6, 1) * 0.55;
+      S.pullBack = S.power * 42;
       S.botAimTick++;
       return;
     }
 
-    if (S.botFakeTarget === 0) {
-      const shot = botChooseShot();
-      if (!shot) { S.turn = 1 - S.turn; return; }
-      S.botTargetAng = shot.ang; S.botTargetPow = shot.pow;
-    }
-    S.botAimPhase = 1; S.botAimTick = 0; S.botDelay = BOT_AIM_FRAMES;
-    S.msgTxt = ''; S.msgFlash = 0;
+    // Think acabou → fase de assentamento
+    S.botAimPhase = 1;
+    S.botAimTick  = 0;
+    S.botDelay    = 42;
+    return;
+  }
 
-  } else if (S.botAimPhase === 1) {
-    const diff = angDiff(S.aimAng, S.botTargetAng);
-    const spd = 0.06 + Math.abs(diff) * 0.3;
-    if (Math.abs(diff) < 0.006) {
-      S.aimAng = S.botTargetAng; S.power = S.botTargetPow; S.pullBack = S.power * 42;
-      S.botAimPhase = 2;
-    } else {
-      S.aimAng += diff * spd;
-      S.power = Math.min(S.botTargetPow, S.power + 0.025); S.pullBack = S.power * 42;
+  // ── FASE 1: SETTLING ──────────────────────────────────────────────────────
+  if (S.botAimPhase === 1) {
+    if (S.botDelay > 0) {
+      S.botDelay--;
+      const progress = 1 - S.botDelay / 42;
+      const residualAmp = _profile.wobbleScale * 0.04 * (1 - progress);
+      const wobble      = calcWobble(S.botAimTick, residualAmp);
+      const diff        = angDiff(S.aimAng, _targetAng + wobble);
+      const spd         = _profile.commitBase * 4 + progress * _profile.commitProg * 3;
+      S.aimAng         += diff * spd;
+      S.power    = _targetPow;
+      S.pullBack = S.power * 42;
+      S.botAimTick++;
+      return;
     }
-    S.botAimTick++;
-    if (S.botAimTick > BOT_AIM_FRAMES * 2) { S.aimAng = S.botTargetAng; S.botAimPhase = 2; }
+    S.aimAng   = _targetAng;
+    S.power    = _targetPow;
+    S.pullBack = S.power * 42;
+    S.botAimPhase = 2;
+    return;
+  }
 
-  } else if (S.botAimPhase === 2) {
+  // ── FASE 2: STRIKE ────────────────────────────────────────────────────────
+  if (S.botAimPhase === 2) {
     const cb = S.balls[0];
-    if (!cb || cb.out) { S.botAimPhase = 0; S.botDelay = 40; return; }
-    const spd2 = S.botTargetPow * 20;
-    cb.vx = Math.cos(S.aimAng) * spd2; cb.vy = Math.sin(S.aimAng) * spd2;
-    sndCueStrike(S.botTargetPow);
-    S.estado = 'rolando'; S.primeiroHit = null; S.faltou = false; S.potTurno = [];
-    S.timerFrames = S.TIMER_MAX; S.power = 0; S.pullBack = 0;
-    S.botAimPhase = 0; S.botDelay = 60;
+    if (!cb || cb.out) {
+      _shotChosen = false; _decoyAng = null;
+      S.botAimPhase = 0; S.botDelay = 40;
+      return;
+    }
+
+    let finalAng = S.aimAng;
+    if (_profile.extraCutErr > 0 && _cutAngle > 0.66) {
+      finalAng += (Math.random() - 0.5) * 2 * _profile.extraCutErr;
+    }
+    finalAng += (Math.random() - 0.5) * 2 * _profile.aimErr;
+
+    const noise    = (Math.random() - 0.5) * 2 * _profile.powerVariance;
+    const finalPow = Math.max(0.18, Math.min(1.0, _targetPow * (1 + noise)));
+
+    cb.vx = Math.cos(finalAng) * finalPow * 20;
+    cb.vy = Math.sin(finalAng) * finalPow * 20;
+    sndCueStrike(finalPow);
+
+    S.estado      = 'rolando';
+    S.primeiroHit = null;
+    S.faltou      = false;
+    S.potTurno    = [];
+    S.timerFrames = S.TIMER_MAX;
+    S.power       = 0;
+    S.pullBack    = 0;
+
+    S.botAimPhase = 0;
+    S.botDelay    = 60;
+    _shotChosen   = false;
+    _decoyAng     = null;
+    _profile      = null;
   }
 }
 
-export { botThinkDelay };
+// Mantido por compatibilidade — main.js importa este mas o delay real é
+// calculado internamente por botTick via calcThinkFrames.
+export function botThinkDelay() {
+  const prof = getBotProfile();
+  return calcThinkFrames(prof, 0.3, 150);
+}
