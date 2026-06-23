@@ -130,25 +130,32 @@ function showHomeThenPlay() {
 
     // Bot game
     const betAmount = free ? 0 : (bet || 0);
-
-    if (betAmount > 0) {
-      const user = auth.currentUser;
-      if (user) {
-        const profile = await getProfile(user.uid).catch(() => null);
-        const balance = profile?.balance || 0;
-        if (balance < betAmount) {
-          // Home.js already validated; this is a safety net
-          return;
-        }
-        await debitBalance(user.uid, betAmount);
-        refreshHome({ fresh: true });
-      }
-    }
-
     const user = auth.currentUser;
     const p1 = { name: user?.displayName || 'Você', photoURL: user?.photoURL || null };
     const p2 = { name: bot.nickname || bot.name || 'Bot', photoURL: null };
-    showPreGame({ player1: p1, player2: p2, bet: betAmount, searching: true, onDone: () => {
+
+    // Start debit in parallel with PreGame animation to avoid black screen
+    let debitPromise = Promise.resolve();
+    if (betAmount > 0 && user) {
+      debitPromise = getProfile(user.uid)
+        .catch(() => null)
+        .then(profile => {
+          if ((profile?.balance || 0) < betAmount) throw new Error('saldo_insuficiente');
+          return debitBalance(user.uid, betAmount);
+        })
+        .then(() => refreshHome({ fresh: true }));
+    }
+
+    // Start loop early so canvas renders behind PreGame overlay (no black flash on fade-out)
+    if (!gameStarted) { gameStarted = true; loop(); }
+
+    showPreGame({ player1: p1, player2: p2, bet: betAmount, searching: true, onDone: async () => {
+      try {
+        await debitPromise;
+      } catch (e) {
+        console.error('[debitPromise]', e.message);
+        return;
+      }
       S.gameEndHandled = false;
       startGameWithBot(bot, betAmount);
     } });
