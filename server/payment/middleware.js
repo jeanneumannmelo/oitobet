@@ -7,12 +7,16 @@ export async function verifyFirebaseToken(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Token não fornecido' });
 
   try {
-    const decoded = await adminAuth.verifyIdToken(token);
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('TOKEN_TIMEOUT')), 8000)
+    );
+    const decoded = await Promise.race([adminAuth.verifyIdToken(token), timeout]);
     req.uid = decoded.uid;
     next();
   } catch (e) {
-    console.error('[verifyFirebaseToken]', e.code);
-    res.status(401).json({ error: 'Token inválido ou expirado' });
+    console.error('[verifyFirebaseToken]', e.code || e.message);
+    const status = e.message === 'TOKEN_TIMEOUT' ? 504 : 401;
+    res.status(status).json({ error: 'Token inválido ou expirado' });
   }
 }
 

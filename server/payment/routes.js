@@ -344,8 +344,11 @@ router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
   const today = new Date().toISOString().split('T')[0];
   const userRef = adminDb.collection('users').doc(req.uid);
 
+  const withTimeout = (promise, ms) =>
+    Promise.race([promise, new Promise((_, r) => setTimeout(() => r(new Error('FIRESTORE_TIMEOUT')), ms))]);
+
   try {
-    const snap = await userRef.get();
+    const snap = await withTimeout(userRef.get(), 10000);
     const data = snap.data() || {};
     const isSameDay = data.dailyDate === today;
     const updates = {};
@@ -372,11 +375,11 @@ router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
       }
     }
 
-    await userRef.update(updates);
+    await withTimeout(userRef.update(updates), 10000);
     res.json({ success: true });
   } catch (e) {
     console.error('[game/finalize]', e.message);
-    res.status(500).json({ error: 'Erro interno.' });
+    res.status(e.message === 'FIRESTORE_TIMEOUT' ? 504 : 500).json({ error: 'Erro interno.' });
   }
 });
 

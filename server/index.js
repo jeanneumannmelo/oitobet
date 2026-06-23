@@ -192,16 +192,4 @@ io.on('connection', socket => {
 const PORT = process.env.PORT || 3001;
 http.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  // Register CartWave webhooks on startup (production only)
-  if (process.env.WEBHOOK_URL) {
-    const url = process.env.WEBHOOK_URL;
-    Promise.all([
-      registerWebhook(url, 'CASHIN'),     // PIX deposits
-      registerWebhook(url, 'CASHOUT'),    // PIX cashouts
-    ]).then(() => {
-      console.log('[webhook] registered CartWave webhooks →', url);
-    }).catch(e => {
-      console.warn('[webhook] registration failed (may already exist):', e.message);
-    });
-  }
 });
