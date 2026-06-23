@@ -223,9 +223,11 @@ router.post('/webhooks/cartwave', async (req, res) => {
     return res.status(400).json({ error: 'JSON inválido' });
   }
 
-  const eventType = event.type || event.event || '';
-  const tag       = event.tag || event.data?.tag || '';
-  const amount    = Number(event.amount || event.data?.amount || 0);
+  // Formato CartWave: { "type": "...", "data": { amount, tag, qr_code_id, tx_id, ... } }
+  const eventType = event.type || '';
+  const data      = event.data || {};
+  const tag       = String(data.tag || '');
+  const amount    = Number(data.amount || 0);
 
   console.log(`[webhook] event=${eventType} tag=${tag} amount=${amount}`);
 
@@ -233,22 +235,22 @@ router.post('/webhooks/cartwave', async (req, res) => {
   res.status(200).json({ ok: true });
 
   // Processar de forma assíncrona para não bloquear a resposta
-  processWebhookEvent({ eventType, tag, amount, event }).catch(e => {
+  processWebhookEvent({ eventType, tag, amount, data }).catch(e => {
     console.error('[webhook] processamento assíncrono falhou:', e.message);
   });
 });
 
-async function processWebhookEvent({ eventType, tag, amount, event }) {
-  // 1. Localizar transação pelo tag (externalId que enviamos na criação)
+async function processWebhookEvent({ eventType, tag, amount, data }) {
+  // 1. Localizar transação pelo tag (externalId = Firestore txId enviado na criação do PIX)
   let txDoc = null;
-  if (tag) {
+  if (tag && tag !== 'NONE') {
     const snap = await adminDb.collection('transactions').doc(tag).get();
     if (snap.exists) txDoc = snap;
   }
 
-  // 2. Fallback: buscar por cartwaveTxId
+  // 2. Fallback: buscar por cartwaveTxId usando campos de data
   if (!txDoc) {
-    const cartwaveTxId = String(event.id || event.transaction_id || event.qr_code_id || '');
+    const cartwaveTxId = String(data.qr_code_id || data.transaction_id || data.tx_id || '');
     if (cartwaveTxId) {
       const q = await adminDb.collection('transactions')
         .where('cartwaveTxId', '==', cartwaveTxId)
