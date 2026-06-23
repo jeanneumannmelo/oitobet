@@ -185,18 +185,28 @@ function showHomeThenPlay() {
   });
 }
 
+// Safety timeout so redirectResultPromise never blocks showAuth forever on mobile.
+const _redirectTimeout = new Promise(resolve => setTimeout(resolve, 4000, null));
+
 onAuth(async user => {
   if (user) {
     handleLoggedIn(user);
   } else {
-    // Wait for any pending Google redirect to finish before showing the login UI.
-    // If the redirect succeeded, onAuthStateChanged will fire again with the user.
-    await redirectResultPromise;
+    // Wait for Google redirect to complete (or 4 s timeout, whichever first).
+    // If redirect succeeded, onAuthStateChanged fires again with the user.
+    await Promise.race([redirectResultPromise, _redirectTimeout]);
     if (auth.currentUser) return;
     hideHome();
     hideCompleteProfile();
     if (!gameStarted) showAuth();
     else location.reload();
+  }
+});
+
+// Global safety net: if a JS crash happens before auth resolves, show login.
+window.addEventListener('error', () => {
+  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
+    try { showAuth(); } catch (_) {}
   }
 });
 

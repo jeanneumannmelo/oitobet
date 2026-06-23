@@ -2,6 +2,8 @@ import { login, auth, db } from '../firebase.js';
 import {
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   updateProfile as fbUpdateProfile,
   sendPasswordResetEmail,
@@ -170,36 +172,45 @@ function showErr(errEl, code) {
 }
 
 // ── Google Auth ────────────────────────────────────────────────────────────────
+// On mobile, popups are blocked by default → use redirect flow instead.
+const _isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+async function _writeGoogleUserDoc(user, isNew) {
+  if (!isNew) return;
+  const userRef = doc(db, 'users', user.uid);
+  await setDoc(userRef, {
+    uid: user.uid,
+    displayName: user.displayName || 'Jogador',
+    email: user.email || '',
+    cpf: '',
+    balance: 0, wins: 0, losses: 0,
+    level: 1, xp: 0,
+    chips: 200,
+    ownedCues: ['basic'],
+    equippedCue: 'basic',
+    profileComplete: false,
+    createdAt: serverTimestamp(),
+  });
+}
+
 async function googleSignIn() {
   const provider = new GoogleAuthProvider();
   provider.addScope('email');
   provider.addScope('profile');
 
-  const cred = await signInWithPopup(auth, provider);
-  const user = cred.user;
+  if (_isMobile) {
+    // Mobile: redirect flow — page reloads after auth; result handled by redirectResultPromise
+    await signInWithRedirect(auth, provider);
+    return; // never reached; page navigates away
+  }
 
-  // Write user doc — this must complete before onAuthStateChanged handler reads it
+  // Desktop: popup flow
+  const cred = await signInWithPopup(auth, provider);
+  const user  = cred.user;
+
   resetDocReady();
   const isNew = cred._tokenResponse?.isNewUser ?? false;
-  const userRef = doc(db, 'users', user.uid);
-
-  // For new Google users, create full doc with all required fields
-  // For returning users, ensureUserDoc is a no-op (doc already exists)
-  if (isNew) {
-    await setDoc(userRef, {
-      uid: user.uid,
-      displayName: user.displayName || 'Jogador',
-      email: user.email || '',
-      cpf: '',
-      balance: 0, wins: 0, losses: 0,
-      level: 1, xp: 0,
-      chips: 200,
-      ownedCues: ['basic'],
-      equippedCue: 'basic',
-      profileComplete: false,
-      createdAt: serverTimestamp(),
-    });
-  }
+  await _writeGoogleUserDoc(user, isNew);
   _docReadyResolve();
   return cred;
 }

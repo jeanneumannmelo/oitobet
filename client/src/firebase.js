@@ -59,7 +59,11 @@ export const getStoredRedirectError = () => _redirectError;
 
 export const redirectResultPromise = getRedirectResult(auth)
   .then(async result => {
-    if (result?.user) await ensureUserDoc(result.user);
+    if (result?.user) {
+      // If this is a new user from Google redirect, write the doc
+      const isNew = result._tokenResponse?.isNewUser ?? false;
+      await ensureUserDoc(result.user, isNew ? {} : null);
+    }
     return result?.user || null;
   })
   .catch(e => {
