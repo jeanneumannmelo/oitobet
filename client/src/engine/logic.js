@@ -11,15 +11,37 @@ export function processTurn() {
     if (S.primeiroHit === null) {
       S.faltou = true; S.msgTxt = 'Falta: nenhuma bola tocada!';
     } else if (S.tipos[S.turn] !== null) {
-      const ht = S.primeiroHit <= 7 ? 'solid' : 'stripe';
-      if (ht !== S.tipos[S.turn]) { S.faltou = true; S.msgTxt = 'Falta: bola adversária primeiro!'; }
+      const myList8 = S.tipos[S.turn] === 'solid' ? [1,2,3,4,5,6,7] : [9,10,11,12,13,14,15];
+      const onThe8 = myList8.every(id => S.potJogador[S.turn].includes(id));
+      if (onThe8) {
+        // Shooting for the 8-ball: must hit ball 8 first
+        if (S.primeiroHit !== 8) { S.faltou = true; S.msgTxt = 'Falta: toque a bola preta primeiro!'; }
+      } else if (S.primeiroHit === 8) {
+        // Hit ball 8 first but own group not cleared yet
+        S.faltou = true; S.msgTxt = 'Falta: bola adversária primeiro!';
+      } else {
+        // Must hit own group first
+        const ht = S.primeiroHit <= 7 ? 'solid' : 'stripe';
+        if (ht !== S.tipos[S.turn]) { S.faltou = true; S.msgTxt = 'Falta: bola adversária primeiro!'; }
+      }
     }
   }
 
-  const pot8 = S.potTurno.includes(8);
+  // Defensive: if ball 8 exited during a non-rolling state (ball-in-hand collision edge case),
+  // it won't be in potTurno — catch it here so the game always ends when 8 is out.
+  const ball8 = S.balls.find(b => b.id === 8);
+  const pot8 = S.potTurno.includes(8) || (ball8 && ball8.out);
   if (pot8) {
-    const myList = S.tipos[S.turn] === 'solid' ? [1,2,3,4,5,6,7] : [9,10,11,12,13,14,15];
-    const allDone = myList.every(id => S.potJogador[S.turn].includes(id));
+    const myType = S.tipos[S.turn];
+    let allDone;
+    if (myType === null) {
+      allDone = false; // Types not yet assigned → always a loss
+    } else {
+      const myList = myType === 'solid' ? [1,2,3,4,5,6,7] : [9,10,11,12,13,14,15];
+      // Include balls pocketed THIS turn — potJogador isn't updated until after this block
+      const thisRound = S.potTurno.filter(id => id !== 8);
+      allDone = myList.every(id => S.potJogador[S.turn].includes(id) || thisRound.includes(id));
+    }
     S.vencedor = (!allDone || S.faltou) ? 1 - S.turn : S.turn;
     S.estado = 'vitoria';
     S.msgTxt = S.players[S.vencedor].name + ' venceu!'; S.msgFlash = 300;

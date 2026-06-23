@@ -32,7 +32,9 @@ export function toGame(cx, cy) {
 }
 
 export function ballMoving() {
-  return S.balls.some(b => !b.out && (Math.abs(b.vx) > 0.04 || Math.abs(b.vy) > 0.04));
+  // Threshold must be <= physics zeroing threshold (0.012) so processTurn is never
+  // called while balls still have residual velocity and can drift into pockets.
+  return S.balls.some(b => !b.out && (Math.abs(b.vx) >= 0.012 || Math.abs(b.vy) >= 0.012));
 }
 
 export function getBall(id) {
