@@ -84,8 +84,23 @@ app.use('/api', paymentRoutes);
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
 if (existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.get('*', (_req, res) => res.sendFile(join(distPath, 'index.html')));
+  // Assets have content-hash filenames → long cache is safe.
+  // HTML must never be cached so browsers always get the latest asset hashes.
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  }));
+  app.get('*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.sendFile(join(distPath, 'index.html'));
+  });
 }
 
 // Room registry
