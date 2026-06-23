@@ -91,4 +91,5 @@ export function restartGame() {
   S.botDelay = 0; S.botAimPhase = 0; S.botAimTick = 0; S.botFakeTarget = 0; S.botFakeLinger = 0;
   S.celebFrames = 0; S.celebParticles = []; S.netAnims = []; S.resignConfirm = false;
   S.gameEndHandled = false;
+  S.rematchState = null; S.rematchCountdown = 0; S.rematchDecideAt = 0;
 }

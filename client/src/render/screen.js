@@ -105,7 +105,7 @@ export function drawVitoria() {
   ov.addColorStop(1, 'rgba(0,0,0,0.85)');
   ctx.fillStyle = ov; ctx.fillRect(0, 0, S.BW, S.BH);
 
-  const pw = 400, ph = 240;
+  const pw = 420, ph = 260;
   const px2 = (S.BW - pw) / 2, py2 = (S.BH - ph) / 2;
 
   // Panel shadow
@@ -126,7 +126,7 @@ export function drawVitoria() {
   ctx.strokeStyle = 'rgba(240,180,0,0.8)'; ctx.lineWidth = 2; ctx.stroke();
   ctx.restore();
 
-  // Inner gold shimmer line
+  // Inner shimmer line
   const shl = ctx.createLinearGradient(px2, py2, px2 + pw, py2);
   shl.addColorStop(0, 'rgba(240,180,0,0)');
   shl.addColorStop(0.3, 'rgba(240,180,0,0.25)');
@@ -134,10 +134,9 @@ export function drawVitoria() {
   shl.addColorStop(1, 'rgba(240,180,0,0)');
   ctx.fillStyle = shl; ctx.fillRect(px2 + 2, py2 + 2, pw - 4, 1);
 
-  // Top bar label
-  const tbH = 36;
+  // Top bar
+  const tbH = 38;
   const isWin = S.vencedor === 0;
-  rr(px2, py2, pw, tbH, 20);
   ctx.beginPath();
   ctx.moveTo(px2 + 20, py2);
   ctx.lineTo(px2 + pw - 20, py2);
@@ -153,7 +152,6 @@ export function drawVitoria() {
     tbg.addColorStop(0, '#3a0808'); tbg.addColorStop(0.5, '#6a1010'); tbg.addColorStop(1, '#3a0808');
   }
   ctx.fillStyle = tbg; ctx.fill();
-
   ctx.fillStyle = '#fff';
   ctx.font = `bold ${Math.round(ph * 0.11)}px Arial`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -161,42 +159,113 @@ export function drawVitoria() {
   ctx.fillText(isWin ? '🏆  VITÓRIA!' : '💀  DERROTA', S.BW / 2, py2 + tbH / 2);
   ctx.shadowBlur = 0;
 
-  // Trophy / skull icon large
-  ctx.font = `${Math.round(ph * 0.22)}px Arial`;
+  // Content area
+  const cy = py2 + tbH;
+  const ch = ph - tbH;
+
+  // Icon
+  ctx.font = `${Math.round(ch * 0.28)}px Arial`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(isWin ? '🏆' : '💀', S.BW / 2 - 80, py2 + tbH + (ph - tbH) * 0.42);
+  ctx.fillText(isWin ? '🏆' : '💀', S.BW / 2 - 88, cy + ch * 0.38);
 
-  // Winner name
+  // Winner name + result
   ctx.fillStyle = isWin ? '#f0c040' : '#cc6060';
-  ctx.font = `bold ${Math.round(ph * 0.1)}px Arial`;
+  ctx.font = `bold ${Math.round(ch * 0.12)}px Arial`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  const nameX = S.BW / 2 - 30;
-  ctx.fillText(S.players[S.vencedor].name, nameX, py2 + tbH + (ph - tbH) * 0.35);
+  const nameX = S.BW / 2 - 42;
+  ctx.fillText(S.players[S.vencedor]?.name || '', nameX, cy + ch * 0.3);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = `${Math.round(ch * 0.095)}px Arial`;
+  ctx.fillText('venceu a partida!', nameX, cy + ch * 0.48);
 
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font = `${Math.round(ph * 0.082)}px Arial`;
-  ctx.fillText('venceu a partida!', nameX, py2 + tbH + (ph - tbH) * 0.55);
-
-  // Prize amount (if bet)
+  // Prize / loss
   if (S.betAmount > 0) {
     const prize = `R$ ${(S.betAmount * 2).toFixed(2).replace('.', ',')}`;
-    ctx.fillStyle = isWin ? '#00ee88' : 'rgba(255,255,255,0.3)';
-    ctx.font = `bold ${Math.round(ph * 0.09)}px Arial`;
-    ctx.fillText(isWin ? `Prêmio: ${prize}` : `Perdeu: R$ ${S.betAmount.toFixed(2).replace('.', ',')}`, nameX, py2 + tbH + (ph - tbH) * 0.74);
+    ctx.fillStyle = isWin ? '#00ee88' : 'rgba(255,100,100,0.7)';
+    ctx.font = `bold ${Math.round(ch * 0.105)}px Arial`;
+    ctx.fillText(
+      isWin ? `Prêmio: ${prize}` : `Perdeu: R$ ${S.betAmount.toFixed(2).replace('.', ',')}`,
+      nameX, cy + ch * 0.67
+    );
   }
 
-  // Play again button
-  const bw = 200, bh = 44, bx2 = (S.BW - bw) / 2, by2 = py2 + ph - bh - 14;
-  ctx.save();
-  ctx.shadowColor = 'rgba(240,180,0,0.5)'; ctx.shadowBlur = 16;
-  rr(bx2, by2, bw, bh, 22);
-  const btg = ctx.createLinearGradient(bx2, by2, bx2, by2 + bh);
-  btg.addColorStop(0, '#f0c040'); btg.addColorStop(1, '#c89020');
-  ctx.fillStyle = btg; ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = '#0a0a0c'; ctx.font = `bold ${Math.round(ph * 0.095)}px Arial`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('Jogar novamente', S.BW / 2, by2 + bh / 2);
+  // ── Bottom buttons ────────────────────────────────────────────────────────
+  const bh = 42, bY = py2 + ph - bh - 14;
+  const gap = 10;
+  const bwEach = (pw - gap * 3) / 2;
+  const revanX = px2 + gap;
+  const menuX  = px2 + gap + bwEach + gap;
 
-  drawVitoria._bx = bx2; drawVitoria._by = by2; drawVitoria._bw = bw; drawVitoria._bh = bh;
+  if (S.rematchState === 'waiting') {
+    // ── Bot thinking state ────────────────────────────────────────────────
+    const dots = '.'.repeat((Math.floor(S.tick / 15) % 4));
+    const secs = Math.max(0, Math.ceil(S.rematchCountdown / 60));
+    const pulse = 0.6 + 0.4 * Math.sin(S.tick * 0.1);
+
+    // REVANCHE button — animated waiting state
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    rr(revanX, bY, bwEach, bh, 21);
+    ctx.fillStyle = 'rgba(240,180,0,0.18)'; ctx.fill();
+    rr(revanX, bY, bwEach, bh, 21);
+    ctx.strokeStyle = 'rgba(240,180,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#f0c030';
+    ctx.font = `bold 11px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(`Aguardando${dots}  ${secs}s`, revanX + bwEach / 2, bY + bh / 2);
+
+    // VOLTAR AO MENU button (still clickable)
+    rr(menuX, bY, bwEach, bh, 21);
+    ctx.fillStyle = 'rgba(60,40,100,0.85)'; ctx.fill();
+    rr(menuX, bY, bwEach, bh, 21);
+    ctx.strokeStyle = 'rgba(150,100,200,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#c8b0f0'; ctx.font = `bold 11px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Voltar ao Menu', menuX + bwEach / 2, bY + bh / 2);
+
+  } else if (S.rematchState === 'rejected') {
+    // ── Bot rejected ──────────────────────────────────────────────────────
+    ctx.fillStyle = 'rgba(255,100,100,0.85)';
+    ctx.font = `bold 11px Arial`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Bot recusou a revanche 😔', S.BW / 2, bY - 12);
+
+    // Only VOLTAR AO MENU centered
+    const bwFull = pw - gap * 2;
+    rr(px2 + gap, bY, bwFull, bh, 21);
+    ctx.fillStyle = 'rgba(60,40,100,0.85)'; ctx.fill();
+    rr(px2 + gap, bY, bwFull, bh, 21);
+    ctx.strokeStyle = 'rgba(150,100,200,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#c8b0f0'; ctx.font = `bold 13px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Voltar ao Menu', S.BW / 2, bY + bh / 2);
+
+    drawVitoria._revanBtn = null;
+    drawVitoria._menuBtn = { x: px2 + gap, y: bY, w: bwFull, h: bh };
+
+  } else {
+    // ── Default: REVANCHE + VOLTAR ────────────────────────────────────────
+    // REVANCHE button (gold)
+    ctx.save();
+    ctx.shadowColor = 'rgba(240,180,0,0.5)'; ctx.shadowBlur = 14;
+    rr(revanX, bY, bwEach, bh, 21);
+    const rg = ctx.createLinearGradient(revanX, bY, revanX, bY + bh);
+    rg.addColorStop(0, '#f0c040'); rg.addColorStop(1, '#c07010');
+    ctx.fillStyle = rg; ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#0a0808'; ctx.font = `bold 13px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('REVANCHE', revanX + bwEach / 2, bY + bh / 2);
+
+    // VOLTAR AO MENU button (dark purple)
+    rr(menuX, bY, bwEach, bh, 21);
+    ctx.fillStyle = 'rgba(60,40,100,0.85)'; ctx.fill();
+    rr(menuX, bY, bwEach, bh, 21);
+    ctx.strokeStyle = 'rgba(150,100,200,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = '#c8b0f0'; ctx.font = `bold 11px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Voltar ao Menu', menuX + bwEach / 2, bY + bh / 2);
+
+    drawVitoria._revanBtn = { x: revanX, y: bY, w: bwEach, h: bh };
+    drawVitoria._menuBtn  = { x: menuX,  y: bY, w: bwEach, h: bh };
+  }
 }

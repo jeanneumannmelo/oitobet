@@ -2,7 +2,7 @@ import { S } from './state.js';
 import { resize } from './engine/layout.js';
 import { initBalls } from './engine/balls.js';
 import { step } from './engine/physics.js';
-import { processTurn } from './engine/logic.js';
+import { processTurn, restartGame } from './engine/logic.js';
 import { botTick, botThinkDelay } from './engine/bot.js';
 import { ballMoving } from './utils.js';
 import { drawBg } from './render/screen.js';
@@ -220,6 +220,28 @@ function loop() {
   // Detect game end and finalize balance
   if (S.estado === 'vitoria' && !S.gameEndHandled) {
     handleGameEnd(S.vencedor);
+  }
+
+  // Rematch countdown tick
+  if (S.rematchState === 'waiting') {
+    S.rematchCountdown = Math.max(0, S.rematchCountdown - 1);
+    const timeUp = S.rematchCountdown <= 0;
+    const decidedNow = S.tick >= S.rematchDecideAt;
+    if (timeUp || decidedNow) {
+      // 65% chance bot accepts, 35% rejects
+      S.rematchState = Math.random() < 0.65 ? 'accepted' : 'rejected';
+    }
+  }
+  if (S.rematchState === 'accepted') {
+    S.rematchState = null;
+    restartGame();
+  }
+
+  // Return to home screen (Voltar ao Menu clicked)
+  if (S._goHome) {
+    S._goHome = false;
+    S.rematchState = null;
+    showHomeThenPlay();
   }
 
   // Detect turn change → trigger "Sua Vez" popup for human player

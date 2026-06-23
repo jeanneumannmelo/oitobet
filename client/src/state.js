@@ -93,6 +93,11 @@ export const S = {
   // ── Match finalization ──
   gameEndHandled: false,
 
+  // ── Rematch ──
+  rematchState: null,   // null | 'waiting' | 'accepted' | 'rejected'
+  rematchCountdown: 0,  // frames remaining until forced decision
+  rematchDecideAt: 0,   // S.tick value when bot decides
+
   // ── Chips / shop ──
   chips: 0,
   equippedCue: 'basic',

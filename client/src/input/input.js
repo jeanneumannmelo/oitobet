@@ -10,8 +10,21 @@ export function startDrag(cx, cy) {
   initAudio();
   if (S.estado === 'vitoria') {
     const g = toGame(cx, cy);
-    const { _bx: bx, _by: by, _bw: bw, _bh: bh } = drawVitoria;
-    if (bx && g.x > bx && g.x < bx + bw && g.y > by && g.y < by + bh) restartGame();
+    const revan = drawVitoria._revanBtn;
+    const menu  = drawVitoria._menuBtn;
+    const hit = (btn) => btn && g.x >= btn.x && g.x <= btn.x + btn.w && g.y >= btn.y && g.y <= btn.y + btn.h;
+
+    if (hit(revan) && S.rematchState === null) {
+      // Start bot thinking countdown — random decision between 3s and 25s
+      S.rematchState = 'waiting';
+      S.rematchCountdown = 30 * 60;
+      S.rematchDecideAt = S.tick + (3 + Math.random() * 22) * 60;
+    } else if (hit(menu)) {
+      S.rematchState = null;
+      S.rematchCountdown = 0;
+      // Signal main.js to return to home screen
+      S._goHome = true;
+    }
     return;
   }
   if (S.resignConfirm) {
