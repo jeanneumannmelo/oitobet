@@ -75,14 +75,26 @@ input,button{font-family:Arial,sans-serif}
 
 <script>
 // Expose hideSplash globally so main.js can call it when auth/home UI is ready.
-window.hideSplash = function(){
+var _splashReady = false;
+var _splashMinDone = false;
+
+function _doHide(){
   var s = document.getElementById('splash');
   if(!s) return;
   s.classList.add('hide');
   setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); }, 600);
+}
+
+// Minimum 2 seconds of splash, always.
+setTimeout(function(){ _splashMinDone = true; if(_splashReady) _doHide(); }, 2000);
+
+window.hideSplash = function(){
+  _splashReady = true;
+  if(_splashMinDone) _doHide();
 };
-// Absolute fallback: remove splash after 10s no matter what.
-setTimeout(window.hideSplash, 10000);
+
+// Absolute fallback: remove splash after 12s no matter what.
+setTimeout(_doHide, 12000);
 </script>
 </body>
 </html>
