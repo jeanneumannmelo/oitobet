@@ -89,25 +89,19 @@ async function cartwaveRequest(method, path, body) {
   return data;
 }
 
-// Expiry 30 min from now in CartWave format
-function expirationDate() {
-  const d = new Date(Date.now() + 30 * 60 * 1000);
-  return d.toISOString().replace('T', 'T').slice(0, 19);
+// CartWave requires ISO 8601 with milliseconds + Z: "2026-06-25T00:00:00.000Z"
+function cartDate(date) {
+  return date.toISOString().replace(/(\.\d{3})Z$/, '.000Z');
 }
 
 export async function createPixCharge({ amount, externalId, cpf, name }) {
-  const now = new Date();
-  const expiry = new Date(now.getTime() + 30 * 60 * 1000).toISOString().slice(0, 19);
-  const due    = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
-  return cartwaveRequest('POST', '/v2/finance/create-pix-copy-and-paste-web', {
+  const expiry = cartDate(new Date(Date.now() + 30 * 60 * 1000));
+  return cartwaveRequest('POST', '/v2/finance/create-pix-copy-and-paste', {
     source_account_branch_identifier: ACCOUNT_BRANCH,
     source_account_number: ACCOUNT_NUMBER,
     amount,
     type_fine: 'NONE',
-    fine: 0,
-    due_date: due,
     expiration_date: expiry,
-    fine_date: due,
     debtor_document: cpf,
     debtor_name: name || 'Depósito OitoBet',
     type_document: 'CPF',
@@ -155,74 +149,22 @@ export async function diagPix() {
   try { token = await getToken(); steps.auth = { ok: true }; }
   catch(e) { steps.auth = { ok: false, error: e.message }; return steps; }
 
-  const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19);
-  const bodyStr = JSON.stringify({
-    source_account_branch_identifier: ACCOUNT_BRANCH,
-    source_account_number: ACCOUNT_NUMBER,
-    amount: 10,
-    type_fine: 'NONE',
-    expiration_date: expiry,
-    debtor_name: 'Teste PIX',
-    tag: 'diag_' + Date.now(),
-  });
-
-  let hmacHeader = '';
-  try { hmacHeader = hmacSign(bodyStr); steps.hmac = { ok: true }; }
-  catch(e) { steps.hmac = { ok: false, error: e.message }; }
-
-  // Full PIX endpoint with complete required fields + test CPF
-  const due = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
-  const fullBodyObj = {
-    source_account_branch_identifier: ACCOUNT_BRANCH,
-    source_account_number: ACCOUNT_NUMBER,
-    amount: 10,
-    type_fine: 'NONE',
-    fine: 0,
-    due_date: due,
-    expiration_date: expiry,
-    fine_date: due,
-    debtor_document: '12345678909', // test CPF
-    debtor_name: 'Teste PIX',
-    type_document: 'CPF',
-    tag: 'diag_' + Date.now(),
-  };
-  const fullBodyStr = JSON.stringify(fullBodyObj);
-  let fullHmac = '';
-  try { fullHmac = hmacSign(fullBodyStr); } catch(e) {}
-
-  // Also try hmac as base64 format
-  const hmacB64 = crypto.createHmac('sha512', HMAC_SECRET || '').update(fullBodyStr).digest('base64');
-
-  // If the HMAC secret is a hex string, try decoding it to raw bytes for signing
-  let hmacKeyDecoded = null;
   try {
-    const decoded = Buffer.from(HMAC_SECRET || '', 'hex');
-    if (decoded.length > 0) {
-      hmacKeyDecoded = crypto.createHmac('sha512', decoded).update(fullBodyStr).digest('hex');
-    }
-  } catch(e) {}
-
-  // Test different HMAC header names — CartWave docs unclear on exact header
-  const variants = [
-    { label: 'hmac-hex',          headerName: 'hmac',        hmacVal: fullHmac       },
-    { label: 'hmac-decoded-key',  headerName: 'hmac',        hmacVal: hmacKeyDecoded  },
-    { label: 'x-signature-hex',   headerName: 'x-signature', hmacVal: fullHmac       },
-    { label: 'hmac-b64',          headerName: 'hmac',        hmacVal: hmacB64         },
-    { label: 'no-hmac',           headerName: null,           hmacVal: null            },
-  ];
-
-  const pixResults = {};
-  for (const v of variants) {
-    try {
-      const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-      if (v.headerName && v.hmacVal) headers[v.headerName] = v.hmacVal;
-      const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, { method: 'POST', headers, body: fullBodyStr });
-      const text = await r.text();
-      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 300); }
-      pixResults[v.label] = { status: r.status, body: parsed };
-    } catch(e) { pixResults[v.label] = { error: e.message }; }
+    const result = await cartwaveRequest('POST', '/v2/finance/create-pix-copy-and-paste', {
+      source_account_branch_identifier: ACCOUNT_BRANCH,
+      source_account_number: ACCOUNT_NUMBER,
+      amount: 1,
+      type_fine: 'NONE',
+      expiration_date: cartDate(new Date(Date.now() + 30 * 60 * 1000)),
+      debtor_document: '06381851902',
+      debtor_name: 'Teste PIX',
+      type_document: 'CPF',
+      tag: 'diag_' + Date.now(),
+    });
+    steps.pix = { ok: true, qr_code_id: result.qr_code_id, tx_id: result.tx_id, status: result.status };
+  } catch(e) {
+    steps.pix = { ok: false, error: e.message };
   }
-  steps.pix = pixResults;
 
   return steps;
 }
