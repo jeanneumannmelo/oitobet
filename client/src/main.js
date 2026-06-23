@@ -16,7 +16,7 @@ import { initInput } from './input/input.js';
 import { initFeltPat } from './render/table.js';
 import { initBgPat } from './render/screen.js';
 import { auth, onAuth, getProfile, debitBalance, finalizeBotMatch, redirectResultPromise } from './firebase.js';
-import { showAuth, hideAuth, awaitUserDocReady } from './ui/Auth.js';
+import { showAuth, hideAuth, awaitUserDocReady, resolveDocReady } from './ui/Auth.js';
 import { showCompleteProfile, hideCompleteProfile } from './ui/CompleteProfile.js';
 import { showHome, hideHome, refreshHome } from './ui/Home.js';
 import { showPreGame } from './ui/PreGame.js';
@@ -118,7 +118,10 @@ async function handleLoggedIn(user) {
   hideAuth();
   registerReferral(user);
 
-  // Wait for any in-flight Firestore doc write (registration race condition)
+  // For returning users (Firebase restores session without going through
+  // login/register), the doc-ready promise is never resolved by Auth.js.
+  // Resolve it now — the doc already exists for returning users.
+  resolveDocReady();
   await awaitUserDocReady();
 
   let profile = null;

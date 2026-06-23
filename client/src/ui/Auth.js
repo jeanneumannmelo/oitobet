@@ -55,6 +55,12 @@ resetDocReady();
 
 export function awaitUserDocReady() { return _docReadyPromise; }
 
+// Resolve the doc-ready promise immediately — used for returning users whose
+// session is restored by Firebase without going through the login/register flow.
+export function resolveDocReady() {
+  if (_docReadyResolve) _docReadyResolve();
+}
+
 // ── HTML helpers ───────────────────────────────────────────────────────────────
 function fieldHTML(id, label, type, placeholder, icon, extra='') {
   return `
