@@ -43,16 +43,69 @@ app.get('/_diag/cartwave', async (_req, res) => {
   } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
 app.get('/_diag/pix', async (_req, res) => {
+  // Step-by-step probe with full error details
+  const steps = {};
   try {
-    const { createPixCharge } = await import('./payment/cartwaveClient.js');
-    const result = await createPixCharge({
-      amount: 10,
-      externalId: 'diag_' + Date.now(),
-      description: 'Teste PIX',
+    // Step 1: env vars present?
+    steps.env = {
+      base: !!process.env.CARTWAVE_BASE_URL,
+      email: !!process.env.CARTWAVE_EMAIL,
+      password: !!process.env.CARTWAVE_PASSWORD,
+      hmac: !!process.env.CARTWAVE_HMAC_SECRET,
+      branch: process.env.CARTWAVE_ACCOUNT_BRANCH || '(not set)',
+      number: process.env.CARTWAVE_ACCOUNT_NUMBER || '(not set)',
+      fixie: !!process.env.FIXIE_URL,
+    };
+
+    // Step 2: auth token
+    const { ProxyAgent, fetch: undiciFetch } = await import('undici');
+    const agent = process.env.FIXIE_URL ? new ProxyAgent(process.env.FIXIE_URL) : null;
+    const pFetch = (url, opts = {}) => agent ? undiciFetch(url, { ...opts, dispatcher: agent }) : fetch(url, opts);
+    const BASE = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
+
+    const authRes = await pFetch(`${BASE}/v2/finance/auth-token/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: process.env.CARTWAVE_EMAIL, client_secret: process.env.CARTWAVE_PASSWORD }),
     });
-    res.json({ ok: true, result });
+    const authText = await authRes.text();
+    let authData; try { authData = JSON.parse(authText); } catch { authData = authText.slice(0, 200); }
+    steps.auth = { status: authRes.status, has_token: typeof authData === 'object' && !!authData.access_token };
+    if (!authData.access_token) return res.json({ ok: false, steps });
+
+    const token = authData.access_token;
+    const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19);
+    const body = JSON.stringify({
+      source_account_branch_identifier: process.env.CARTWAVE_ACCOUNT_BRANCH || '0001',
+      source_account_number: process.env.CARTWAVE_ACCOUNT_NUMBER || '7004635',
+      amount: 10,
+      type_fine: 'NONE',
+      expiration_date: expiry,
+      debtor_name: 'Teste PIX',
+      tag: 'diag_' + Date.now(),
+    });
+
+    // Step 3: HMAC sign
+    let hmacHeader = '';
+    try {
+      const { createHmac } = await import('crypto');
+      hmacHeader = createHmac('sha512', process.env.CARTWAVE_HMAC_SECRET || '').update(body).digest('hex');
+      steps.hmac = { ok: true, len: hmacHeader.length };
+    } catch(e) { steps.hmac = { ok: false, error: e.message }; }
+
+    // Step 4: PIX request
+    const pixRes = await pFetch(`${BASE}/v2/finance/create-pix-copy-and-paste-web-simplified`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
+      body,
+    });
+    const pixText = await pixRes.text();
+    let pixData; try { pixData = JSON.parse(pixText); } catch { pixData = pixText.slice(0, 400); }
+    steps.pix = { status: pixRes.status, body: pixData };
+
+    res.json({ ok: pixRes.ok, steps });
   } catch (e) {
-    res.status(502).json({ ok: false, error: e.message, cause: String(e.cause || '') });
+    res.status(502).json({ ok: false, steps, error: e.message, stack: e.stack?.split('\n').slice(0,4) });
   }
 });
 
