@@ -3,10 +3,17 @@ import { getBall } from '../utils.js';
 import { sndCueStrike } from '../audio/sounds.js';
 
 const BOT_AIM_FRAMES  = 45;
-const BOT_THINK_MIN   = 2.5 * 60;  // 2.5s at 60fps
-const BOT_THINK_MAX   = 5.0 * 60;  // 5s at 60fps
+const BOT_THINK_MIN   = 2.5 * 60;
+const BOT_THINK_MAX   = 5.0 * 60;
+
+// Difficulty 5 thinks faster — a pro doesn't hesitate
+const BOT_THINK_MIN_HARD = 0.8 * 60;
+const BOT_THINK_MAX_HARD = 1.6 * 60;
 
 function botThinkDelay() {
+  if (S.botDifficulty >= 5) {
+    return Math.round(BOT_THINK_MIN_HARD + Math.random() * (BOT_THINK_MAX_HARD - BOT_THINK_MIN_HARD));
+  }
   return Math.round(BOT_THINK_MIN + Math.random() * (BOT_THINK_MAX - BOT_THINK_MIN));
 }
 
@@ -39,6 +46,53 @@ function ghostClear(gx, gy, excludeId) {
   return true;
 }
 
+// Estimate whether the cue ball scratches after hitting the ghost point.
+// Uses two models: straight-through (low cut angle) and perpendicular deflection (stun).
+function scratchRisk(cbX, cbY, gx, gy, shotAng, cutAng) {
+  const extDist = 320;
+
+  // 1. Straight-through model (small cut = cue ball keeps going along shot line)
+  if (cutAng < 0.55) {
+    const ex = gx + Math.cos(shotAng) * extDist;
+    const ey = gy + Math.sin(shotAng) * extDist;
+    for (const p of S.POCKETS) {
+      if (ptSegDist(p.x, p.y, gx, gy, ex, ey) < S.BR * 2.2) return true;
+    }
+  }
+
+  // 2. Perpendicular deflection model (stun shot — typical for medium power)
+  //    Cue ball deflects ~90° from shot direction; try both sides
+  for (const sign of [1, -1]) {
+    const perpAng = shotAng + sign * Math.PI / 2;
+    const px2 = gx + Math.cos(perpAng) * extDist;
+    const py2 = gy + Math.sin(perpAng) * extDist;
+    for (const p of S.POCKETS) {
+      if (ptSegDist(p.x, p.y, gx, gy, px2, py2) < S.BR * 2.2) return true;
+    }
+  }
+
+  return false;
+}
+
+// Estimate cue ball end position after a stun shot.
+// Used for look-ahead scoring.
+function estimateCbEnd(gx, gy, shotAng, power) {
+  // Stun: cue ball goes perpendicular to aim from contact point
+  // Pick the direction that keeps cue ball in-bounds best
+  const dist = power * 100;
+  for (const sign of [1, -1]) {
+    const ang = shotAng + sign * Math.PI / 2;
+    const ex = gx + Math.cos(ang) * dist;
+    const ey = gy + Math.sin(ang) * dist;
+    if (ex > S.PX + S.BR*3 && ex < S.PX + S.PW - S.BR*3 &&
+        ey > S.PY + S.BR*3 && ey < S.PY + S.PH - S.BR*3) {
+      return { x: ex, y: ey };
+    }
+  }
+  // Fallback: center of table
+  return { x: S.PX + S.PW / 2, y: S.PY + S.PH / 2 };
+}
+
 function evalShot(cb, tb, pocket) {
   const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
   const gx = tb.x - Math.cos(angTP) * S.BR * 2;
@@ -51,9 +105,36 @@ function evalShot(cb, tb, pocket) {
   const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
   const cutAng = Math.abs(angDiff(angTP, shotAng));
   if (cutAng > Math.PI / 2) return -Infinity;
+
+  // Discard shots with high scratch risk
+  if (scratchRisk(cb.x, cb.y, gx, gy, shotAng, cutAng)) return -Infinity;
+
   const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
   const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * 280;
+
+  // Prefer shots that leave cue ball near center (position play)
+  const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+  const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
+  const cx = S.PX + S.PW / 2, cy = S.PY + S.PH / 2;
+  const centerDist = Math.hypot(cbEnd.x - cx, cbEnd.y - cy);
+  const posBonus = Math.max(0, 180 - centerDist * 0.5);
+
+  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * 280 + posBonus;
+}
+
+// Look-ahead: after this shot, how many good shots are available from estimated cue ball pos?
+function lookAheadBonus(gx, gy, shotAng, power, targets) {
+  if (S.botDifficulty < 4) return 0;
+  const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
+  let bestNext = -Infinity;
+  const mockCb = { x: cbEnd.x, y: cbEnd.y };
+  for (const tb of targets) {
+    for (const pocket of S.POCKETS) {
+      const s = evalShot(mockCb, tb, pocket);
+      if (s > bestNext) bestNext = s;
+    }
+  }
+  return bestNext > 0 ? Math.min(bestNext * 0.12, 160) : 0;
 }
 
 function botChooseShot() {
@@ -77,16 +158,24 @@ function botChooseShot() {
   let best = null, bestScore = -Infinity;
   targets.forEach(tb => {
     S.POCKETS.forEach(pocket => {
-      const score = evalShot(cb, tb, pocket);
+      const baseScore = evalShot(cb, tb, pocket);
+      if (baseScore === -Infinity) return;
+
+      const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
+      const gx = tb.x - Math.cos(angTP) * S.BR * 2;
+      const gy = tb.y - Math.sin(angTP) * S.BR * 2;
+      const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
+      const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
+      const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
+      const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+
+      // Remaining targets for look-ahead (exclude this ball)
+      const remaining = targets.filter(t => t.id !== tb.id);
+      const score = baseScore + lookAheadBonus(gx, gy, shotAng, power, remaining);
+
       if (score > bestScore) {
         bestScore = score;
-        const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
-        const gx = tb.x - Math.cos(angTP) * S.BR * 2;
-        const gy = tb.y - Math.sin(angTP) * S.BR * 2;
-        const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
-        const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
-        const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-        best = { ang: shotAng, pow: Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360)), score };
+        best = { ang: shotAng, pow: power, score };
       }
     });
   });
@@ -95,7 +184,9 @@ function botChooseShot() {
     const tb = targets[0];
     best = { ang: Math.atan2(tb.y - cb.y, tb.x - cb.x), pow: 0.55, score: -1 };
   }
-  const errByDiff = [0, 0.15, 0.08, 0.04, 0.015, 0.003];
+
+  // Aim error scales down with difficulty; difficulty 5 is essentially perfect
+  const errByDiff = [0, 0.18, 0.10, 0.05, 0.018, 0.001];
   const err = errByDiff[Math.min(5, Math.max(1, S.botDifficulty))] || 0.08;
   if (best) best.ang += (Math.random() - 0.5) * 2 * err;
   return best;
@@ -138,31 +229,29 @@ export function botTick() {
     if (S.botDelay > 0) {
       S.botDelay--;
 
-      // Pre-compute the real shot on the very first tick of this think phase
       if (S.botFakeTarget === 0) {
         const shot = botChooseShot();
         if (shot) { S.botTargetAng = shot.ang; S.botTargetPow = shot.pow; }
         S.botFakeTarget = 1;
-        // Save the initial delay so we can compute progress fraction
         S.botFakeLinger = S.botDelay + 1;
       }
 
-      // Hover naturally near the real target: slow drift + oscillations that fade as we commit
       if (S.botFakeLinger > 0) {
-        const progress = 1 - S.botDelay / S.botFakeLinger;   // 0 → 1 over think phase
+        const progress = 1 - S.botDelay / S.botFakeLinger;
 
-        // Two overlapping sine waves give a natural "micro-correction" look
-        const amp = 0.10 * (1 - progress * 0.8);
+        // Higher difficulty = less wobble, commits faster
+        const wobbleScale = S.botDifficulty >= 5 ? 0.02 : 0.10;
+        const amp = wobbleScale * (1 - progress * 0.8);
         const wobble = Math.sin(S.botAimTick * 0.11) * amp
                      + Math.cos(S.botAimTick * 0.065) * amp * 0.45;
 
         const targetAngle = S.botTargetAng + wobble;
         const diff = angDiff(S.aimAng, targetAngle);
 
-        // Aim speed ramps up as the bot commits
-        S.aimAng += diff * (0.014 + progress * 0.038);
+        // Higher difficulty commits faster
+        const commitSpeed = S.botDifficulty >= 5 ? 0.06 + progress * 0.08 : 0.014 + progress * 0.038;
+        S.aimAng += diff * commitSpeed;
 
-        // Power bar gradually builds up (capped at 60% during think phase)
         S.power    = S.botTargetPow * Math.min(progress * 1.8, 1) * 0.60;
         S.pullBack = S.power * 42;
       }
@@ -170,7 +259,6 @@ export function botTick() {
       return;
     }
 
-    // Delay expired — commit to final precise aim
     if (S.botFakeTarget === 0) {
       const shot = botChooseShot();
       if (!shot) { S.turn = 1 - S.turn; return; }

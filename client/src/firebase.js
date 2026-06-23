@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
   authDomain: "oitobet-brasil.firebaseapp.com",
@@ -96,8 +96,9 @@ export function onAuth(callback) {
 
 // ── User profile ─────────────────────────────────────────────────────────────
 
-export async function getProfile(uid) {
-  const snap = await getDoc(doc(db, 'users', uid));
+export async function getProfile(uid, { fresh = false } = {}) {
+  const ref = doc(db, 'users', uid);
+  const snap = await (fresh ? getDocFromServer(ref) : getDoc(ref));
   return snap.exists() ? snap.data() : null;
 }
 

@@ -1547,11 +1547,11 @@ export function hideHome() {
   if (_el) _el.classList.remove('show');
 }
 
-export function refreshHome() {
+export function refreshHome({ fresh = false } = {}) {
   if (!_el) return;
   const user = auth.currentUser;
   if (!user) return;
-  getProfile(user.uid).then(p => {
+  getProfile(user.uid, { fresh }).then(p => {
     if (!p) return;
     _profile = p;
     const balEl = _el.querySelector('#hp-bal-val');

@@ -71,7 +71,8 @@ async function handleGameEnd(winnerIdx) {
 
   try {
     await finalizeBotMatch({ playerWon: isHumanWin, betAmount: S.betAmount });
-    refreshHome();
+    // Force fresh read from server — Admin SDK writes bypass local Firestore cache
+    refreshHome({ fresh: true });
   } catch(e) {
     console.error('[handleGameEnd]', e);
   }
@@ -140,7 +141,7 @@ function showHomeThenPlay() {
           return;
         }
         await debitBalance(user.uid, betAmount);
-        refreshHome();
+        refreshHome({ fresh: true });
       }
     }
 
