@@ -138,70 +138,42 @@ export async function registerWebhook(url, typeWebhook) {
   });
 }
 
-// Promise.race-based timeout compatible with all Node.js versions
-function fetchT(url, opts, ms = 8000) {
-  return Promise.race([
-    proxiedFetch(url, opts),
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout_${ms}ms`)), ms)),
-  ]);
-}
+// Diagnostic: attempt PIX charge using module-level proxy and return step-by-step result
+export async function diagPix() {
+  const steps = {};
+  steps.env = { hmac_set: !!HMAC_SECRET, account_number: ACCOUNT_NUMBER, account_branch: ACCOUNT_BRANCH };
 
-// Diagnostic: probe multiple PIX endpoint candidates using existing proxy+auth
-export async function diagPixEndpoints() {
-  const token = await getToken();
+  let token;
+  try { token = await getToken(); steps.auth = { ok: true }; }
+  catch(e) { steps.auth = { ok: false, error: e.message }; return steps; }
+
   const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19);
-  const postBody = JSON.stringify({
+  const bodyStr = JSON.stringify({
     source_account_branch_identifier: ACCOUNT_BRANCH,
     source_account_number: ACCOUNT_NUMBER,
     amount: 10,
     type_fine: 'NONE',
     expiration_date: expiry,
     debtor_name: 'Teste PIX',
-    tag: 'test_pix_probe_' + Date.now(),
+    tag: 'diag_' + Date.now(),
   });
 
-  // Sanity check: verify auth POST still works from this function
-  let authCheck;
+  let hmacHeader = '';
+  try { hmacHeader = hmacSign(bodyStr); steps.hmac = { ok: true }; }
+  catch(e) { steps.hmac = { ok: false, error: e.message }; }
+
   try {
-    const ar = await fetchT(`${BASE_URL}/v2/finance/auth-token/`, {
+    const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web-simplified`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET }),
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
+      body: bodyStr,
     });
-    const at = await ar.text();
-    authCheck = { status: ar.status, has_token: at.includes('access_token') };
-  } catch(e) { authCheck = { error: e.message, cause: e.cause?.code }; }
-
-  const candidates = [
-    '/v2/finance/create-pix-copy-and-paste-web-simplified',
-    '/v2/finance/create-pix-copy-and-paste-simplified',
-    '/v2/finance/create-pix-qrcode',
-    '/v2/finance/generate-pix',
-    '/v2/finance/create-pix-cob',
-    '/v2/finance/create-pix',
-    '/v2/payment/pix',
-    '/v2/billing/pix',
-    '/pix/create',
-  ];
-
-  const postResults = {};
-  for (const path of candidates) {
-    try {
-      const r = await fetchT(`${BASE_URL}${path}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: postBody,
-      });
-      const text = await r.text();
-      let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 300); }
-      postResults[path] = { status: r.status, body: parsed };
-      if (r.status !== 404) break;
-    } catch (e) { postResults[path] = { error: e.message, cause: e.cause?.message || e.cause?.code || '' }; }
+    const text = await r.text();
+    let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 400); }
+    steps.pix = { status: r.status, body: parsed };
+  } catch(e) {
+    steps.pix = { error: e.message, cause: e.cause?.code || e.cause?.message || String(e.cause || '') };
   }
 
-  return { token_ok: true, authCheck, postResults };
+  return steps;
 }
