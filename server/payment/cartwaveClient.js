@@ -163,7 +163,7 @@ export async function diagPix() {
   catch(e) { steps.hmac = { ok: false, error: e.message }; }
 
   try {
-    const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web-simplified`, {
+    const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
       body: bodyStr,
