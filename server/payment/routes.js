@@ -212,8 +212,7 @@ router.post('/webhooks/cartwave', async (req, res) => {
   }
 
   // Log completo para diagnóstico do formato de assinatura CartWave
-  console.log('[webhook] headers:', JSON.stringify(req.headers));
-  console.log('[webhook] body:', rawBody.slice(0, 500));
+  console.log('[webhook] body_full:', rawBody);
   console.log('[webhook] sig recebida:', signature);
 
   if (!verifyWebhookSignature(rawBody, signature)) {
