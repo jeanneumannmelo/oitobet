@@ -162,31 +162,45 @@ export async function diagPix() {
   try { hmacHeader = hmacSign(bodyStr); steps.hmac = { ok: true }; }
   catch(e) { steps.hmac = { ok: false, error: e.message }; }
 
-  const candidates = [
-    '/v2/finance/create-copy-and-paste-simplified',
-    '/v2/finance/pix/create-copy-and-paste-simplified',
-    '/v2/finance/create-pix-copy-and-paste-simplified',
-    '/v2/finance/create-pix-copy-and-paste-web-simplified',
-    '/v2/finance/create-pix-copy-and-paste-web',
-    '/pix/create-copy-and-paste-simplified',
-    '/v2/pix/create-copy-and-paste-simplified',
+  // Full PIX endpoint with complete required fields + test CPF
+  const due = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+  const fullBodyObj = {
+    source_account_branch_identifier: ACCOUNT_BRANCH,
+    source_account_number: ACCOUNT_NUMBER,
+    amount: 10,
+    type_fine: 'NONE',
+    fine: 0,
+    due_date: due,
+    expiration_date: expiry,
+    fine_date: due,
+    debtor_document: '12345678909', // test CPF
+    debtor_name: 'Teste PIX',
+    type_document: 'CPF',
+    tag: 'diag_' + Date.now(),
+  };
+  const fullBodyStr = JSON.stringify(fullBodyObj);
+  let fullHmac = '';
+  try { fullHmac = hmacSign(fullBodyStr); } catch(e) {}
+
+  // Also try hmac as base64 format
+  const hmacB64 = crypto.createHmac('sha512', HMAC_SECRET || '').update(fullBodyStr).digest('base64');
+
+  const variants = [
+    { label: 'full+hex_hmac', body: fullBodyStr, hmac: fullHmac },
+    { label: 'full+b64_hmac', body: fullBodyStr, hmac: hmacB64 },
+    { label: 'full+no_hmac',  body: fullBodyStr, hmac: '' },
   ];
 
   const pixResults = {};
-  for (const path of candidates) {
+  for (const v of variants) {
     try {
-      const r = await proxiedFetch(`${BASE_URL}${path}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
-        body: bodyStr,
-      });
+      const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+      if (v.hmac) headers['hmac'] = v.hmac;
+      const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, { method: 'POST', headers, body: v.body });
       const text = await r.text();
-      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 200); }
-      pixResults[path] = { status: r.status, body: parsed };
-      if (r.status !== 404) break;
-    } catch(e) {
-      pixResults[path] = { error: e.message };
-    }
+      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 300); }
+      pixResults[v.label] = { status: r.status, body: parsed };
+    } catch(e) { pixResults[v.label] = { error: e.message }; }
   }
   steps.pix = pixResults;
 
