@@ -44,9 +44,16 @@ app.get('/_diag/cartwave', async (_req, res) => {
 });
 app.get('/_diag/pix', async (_req, res) => {
   try {
-    const result = await diagPixEndpoints();
-    res.json({ ok: true, ...result });
-  } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+    const { createPixCharge } = await import('./payment/cartwaveClient.js');
+    const result = await createPixCharge({
+      amount: 10,
+      externalId: 'diag_' + Date.now(),
+      description: 'Teste PIX',
+    });
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.status(502).json({ ok: false, error: e.message, cause: String(e.cause || '') });
+  }
 });
 
 app.use(express.json({
