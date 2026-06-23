@@ -95,15 +95,23 @@ function expirationDate() {
   return d.toISOString().replace('T', 'T').slice(0, 19);
 }
 
-export async function createPixCharge({ amount, externalId, description }) {
-  return cartwaveRequest('POST', '/v2/finance/create-pix-copy-and-paste-web-simplified', {
+export async function createPixCharge({ amount, externalId, cpf, name }) {
+  const now = new Date();
+  const expiry = new Date(now.getTime() + 30 * 60 * 1000).toISOString().slice(0, 19);
+  const due    = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+  return cartwaveRequest('POST', '/v2/finance/create-pix-copy-and-paste-web', {
     source_account_branch_identifier: ACCOUNT_BRANCH,
     source_account_number: ACCOUNT_NUMBER,
     amount,
     type_fine: 'NONE',
-    expiration_date: expirationDate(),
-    debtor_name: description || 'Depósito OitoBet',
-    tag: externalId, // our Firestore txId — echoed back in webhook
+    fine: 0,
+    due_date: due,
+    expiration_date: expiry,
+    fine_date: due,
+    debtor_document: cpf,
+    debtor_name: name || 'Depósito OitoBet',
+    type_document: 'CPF',
+    tag: externalId,
   });
 }
 
