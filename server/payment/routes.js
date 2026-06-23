@@ -137,9 +137,10 @@ router.post('/admin/approve-withdrawal/:txId', verifyAdminSecret, async (req, re
       return res.status(409).json({ error: `Status inválido: ${tx.status}` });
     }
 
+    const netAmount = tx.amount - (tx.fee || 0); // valor líquido após taxa da plataforma
     let cashout;
     try {
-      cashout = await createCashout({ amount: tx.amount, pixKey: tx.pixKey, externalId: txId });
+      cashout = await createCashout({ amount: netAmount, pixKey: tx.pixKey, externalId: txId });
     } catch (e) {
       // Estornar saldo se CartWave falhar
       await adminDb.collection('users').doc(tx.uid).update({
