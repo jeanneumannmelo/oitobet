@@ -39,20 +39,29 @@ function botDailySeed(botId, salt) {
   return Math.abs(h);
 }
 
-function botDailyStats(bot) {
-  // Relative score 0-1: stable all day, unique per bot
-  const relScore = (botDailySeed(bot.id, 'e') % 100000) / 100000;
+function computeBotRankings(bots) {
+  // Sort bots by their daily seed to get a consistent daily ordering
+  const sorted = bots
+    .map(bot => ({ bot, seed: botDailySeed(bot.id, 'e') }))
+    .sort((a, b) => a.seed - b.seed);
 
-  // Earnings scale with time of day: R$100 at midnight → R$9837 at 23:59
+  const N = sorted.length || 1;
   const now = new Date();
   const minutesOfDay = now.getHours() * 60 + now.getMinutes();
-  const dayProgress = minutesOfDay / 1439; // 0..1
+  const dayProgress = minutesOfDay / 1439;
   const MIN_EARN = 100.03;
   const MAX_EARN = 9837.88;
   const cap = MIN_EARN + (MAX_EARN - MIN_EARN) * dayProgress;
-  const earnings = +(MIN_EARN + relScore * (cap - MIN_EARN)).toFixed(2);
 
-  return { earnings, relScore };
+  return sorted.map(({ bot }, rank) => {
+    // Evenly distribute relScores across [0,1] — guarantees visible gaps
+    const baseRel = (rank + 0.5) / N;
+    // Small daily jitter ±9% so order can shuffle slightly each day
+    const jitter = ((botDailySeed(bot.id, 'j') % 1000) / 1000 - 0.5) * 0.18;
+    const relScore = Math.max(0.03, Math.min(0.97, baseRel + jitter));
+    const earnings = +(MIN_EARN + relScore * (cap - MIN_EARN)).toFixed(2);
+    return { bot, earnings, relScore };
+  });
 }
 
 // Polymarket-style initials avatar
@@ -447,7 +456,7 @@ function viewIndicacaoHTML(user, profile) {
   return `
 <div class="hp-view" id="view-indicacao">
   <div class="hp-section-hd" style="margin-bottom:16px">
-    <div><h2>Indique e Ganhe</h2><p style="color:rgba(255,255,255,.38);font-size:13px;margin:0">Ganhe 70% do que seus indicados perderem nas apostas</p></div>
+    <div><h2>Indique e Ganhe</h2><p style="color:rgba(255,255,255,.38);font-size:13px;margin:0">Ganhe R$5 por cada indicado que depositar R$10 ou mais</p></div>
   </div>
 
   <div class="ind-grid">
@@ -471,12 +480,12 @@ function viewIndicacaoHTML(user, profile) {
       <div class="ind-stats-grid">
         <div class="ind-stat">
           <div class="is-label">Indicados</div>
-          <div class="is-sub">Total cadastros</div>
+          <div class="is-sub">Cadastros realizados</div>
           <div class="is-val">${referralCount}</div>
         </div>
         <div class="ind-stat">
-          <div class="is-label">Comissão</div>
-          <div class="is-sub">70% das perdas deles</div>
+          <div class="is-label">Comissões</div>
+          <div class="is-sub">R$5 por depósito</div>
           <div class="is-val green">${fmtBRL(totalEarned)}</div>
         </div>
       </div>
@@ -495,20 +504,20 @@ function viewIndicacaoHTML(user, profile) {
           <div class="ind-step-num s1">1</div>
           <div>
             <h4>Indique Amigos</h4>
-            <p>Compartilhe seu link ou código de indicação.</p>
+            <p>Compartilhe seu link único de indicação.</p>
           </div>
         </div>
         <div class="ind-step">
           <div class="ind-step-num s2">2</div>
           <div>
-            <h4>Indicado aposta e perde</h4>
-            <p>Toda vez que seu indicado perder uma aposta, você recebe.</p>
+            <h4>Indicado faz um depósito</h4>
+            <p>Quando seu indicado depositar R$10 ou mais, você ganha.</p>
           </div>
         </div>
         <div class="ind-step">
           <div class="ind-step-num s3">3</div>
           <div>
-            <h4>70% vai para você</h4>
+            <h4>R$5 creditado para você</h4>
             <p>Acumule e transfira para seu saldo a qualquer momento.</p>
           </div>
         </div>
@@ -516,7 +525,7 @@ function viewIndicacaoHTML(user, profile) {
       <div class="ind-note">Saldo mínimo R$ 10,00 para transferência. Sem prazo de expiração.</div>
     </div>
 
-    <!-- Desempenho -->
+    <!-- Resumo -->
     <div class="ind-card">
       <div class="ind-card-hd">${ICO_TREND} <h3>Resumo</h3></div>
       <div class="ind-perf-row">
@@ -806,16 +815,13 @@ async function loadRanking(el, containerId = '#hp-rank-list') {
     const realUsers = await getDailyRanking(5);
 
     const botPool = (_bots.length ? _bots : FALLBACK_BOTS);
-    const botEntries = botPool.map((bot, i) => {
-      const stats = botDailyStats(bot);
-      return {
-        uid: bot.id,
-        displayName: bot.nickname || bot.name,
-        photoURL: playerPhotoURL(bot.name || '', i + 1),
-        dailyEarnings: stats.earnings,
-        relScore: stats.relScore,
-      };
-    });
+    const botEntries = computeBotRankings(botPool).map(({ bot, earnings, relScore }) => ({
+      uid: bot.id,
+      displayName: bot.nickname || bot.name,
+      photoURL: null,
+      dailyEarnings: earnings,
+      relScore,
+    }));
 
     const combined = [...realUsers, ...botEntries]
       .reduce((acc, e) => { if (!acc.find(x => x.uid === e.uid)) acc.push(e); return acc; }, [])
@@ -840,10 +846,12 @@ async function loadRankingFull(el) {
   try {
     const realUsers = await getDailyRanking(10);
     const botPool = _bots.length ? _bots : FALLBACK_BOTS;
-    const botEntries = botPool.map((bot, i) => {
-      const stats = botDailyStats(bot);
-      return { uid: bot.id, displayName: bot.nickname || bot.name, photoURL: playerPhotoURL(bot.name || '', i + 1), dailyEarnings: stats.earnings };
-    });
+    const botEntries = computeBotRankings(botPool).map(({ bot, earnings }) => ({
+      uid: bot.id,
+      displayName: bot.nickname || bot.name,
+      photoURL: null,
+      dailyEarnings: earnings,
+    }));
     const combined = [...realUsers, ...botEntries]
       .reduce((acc, e) => { if (!acc.find(x => x.uid === e.uid)) acc.push(e); return acc; }, [])
       .sort((a, b) => (b.dailyEarnings || 0) - (a.dailyEarnings || 0))

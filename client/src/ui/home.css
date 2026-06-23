@@ -444,13 +444,15 @@ input, button, select { font-family: Arial, sans-serif; }
 
 /* ── Indique e Ganhe ──────────────────────────────────────────────────────── */
 .ind-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-@media (max-width: 720px) { .ind-grid { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .ind-grid { grid-template-columns: 1fr; gap: 12px; } }
 .ind-card { background: #141414; border: 1px solid #222; border-radius: 16px; padding: 22px; }
+@media (max-width: 600px) { .ind-card { padding: 16px; border-radius: 12px; } }
 .ind-card-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
 .ind-card-hd svg { width: 20px; height: 20px; color: #00d470; }
 .ind-card-hd h3 { color: #fff; font-size: 15px; font-weight: 800; margin: 0; }
 .ind-bal-label { color: rgba(255,255,255,.4); font-size: 12px; margin-bottom: 6px; }
-.ind-bal-amount { color: #fff; font-size: 32px; font-weight: 900; margin-bottom: 16px; }
+.ind-bal-amount { color: #fff; font-size: 32px; font-weight: 900; margin-bottom: 16px; word-break: break-all; }
+@media (max-width: 600px) { .ind-bal-amount { font-size: 26px; } }
 .ind-val-display {
   background: #181818; border: 1px solid #262626; border-radius: 10px;
   padding: 14px; text-align: center; color: rgba(255,255,255,.5);
@@ -459,8 +461,9 @@ input, button, select { font-family: Arial, sans-serif; }
 .ind-transfer-btn {
   width: 100%; padding: 13px; border-radius: 10px; border: 1px solid rgba(0,180,90,.3);
   background: rgba(180,130,0,.1); color: #d4a800; font-size: 13px; font-weight: 800;
-  cursor: pointer; transition: all .18s;
+  cursor: pointer; transition: all .18s; word-break: break-word;
 }
+@media (max-width: 600px) { .ind-transfer-btn { font-size: 11px; padding: 11px 8px; } }
 .ind-transfer-btn:hover { background: rgba(180,130,0,.2); }
 .ind-note { font-size: 11px; color: rgba(255,255,255,.25); text-align: center; margin-top: 8px; }
 .ind-link-wrap {
