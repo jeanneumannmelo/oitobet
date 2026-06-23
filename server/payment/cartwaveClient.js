@@ -185,18 +185,22 @@ export async function diagPix() {
   // Also try hmac as base64 format
   const hmacB64 = crypto.createHmac('sha512', HMAC_SECRET || '').update(fullBodyStr).digest('base64');
 
+  // Test different HMAC header names — CartWave docs unclear on exact header
   const variants = [
-    { label: 'full+hex_hmac', body: fullBodyStr, hmac: fullHmac },
-    { label: 'full+b64_hmac', body: fullBodyStr, hmac: hmacB64 },
-    { label: 'full+no_hmac',  body: fullBodyStr, hmac: '' },
+    { label: 'hmac-hex',         headerName: 'hmac',        hmacVal: fullHmac },
+    { label: 'x-signature-hex',  headerName: 'x-signature', hmacVal: fullHmac },
+    { label: 'x-hmac-hex',       headerName: 'x-hmac',      hmacVal: fullHmac },
+    { label: 'signature-hex',    headerName: 'signature',   hmacVal: fullHmac },
+    { label: 'hmac-b64',         headerName: 'hmac',        hmacVal: hmacB64  },
+    { label: 'no-hmac',          headerName: null,           hmacVal: null     },
   ];
 
   const pixResults = {};
   for (const v of variants) {
     try {
       const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-      if (v.hmac) headers['hmac'] = v.hmac;
-      const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, { method: 'POST', headers, body: v.body });
+      if (v.headerName && v.hmacVal) headers[v.headerName] = v.hmacVal;
+      const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, { method: 'POST', headers, body: fullBodyStr });
       const text = await r.text();
       let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 300); }
       pixResults[v.label] = { status: r.status, body: parsed };
