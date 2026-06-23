@@ -16,7 +16,7 @@ import { initInput } from './input/input.js';
 import { initFeltPat } from './render/table.js';
 import { initBgPat } from './render/screen.js';
 import { auth, onAuth, getProfile, debitBalance, finalizeBotMatch, redirectResultPromise } from './firebase.js';
-import { showAuth, hideAuth } from './ui/Auth.js';
+import { showAuth, hideAuth, awaitUserDocReady } from './ui/Auth.js';
 import { showCompleteProfile, hideCompleteProfile } from './ui/CompleteProfile.js';
 import { showHome, hideHome, refreshHome } from './ui/Home.js';
 import { showPreGame } from './ui/PreGame.js';
@@ -112,8 +112,11 @@ async function handleLoggedIn(user) {
   hideAuth();
   registerReferral(user);
 
+  // Wait for any in-flight Firestore doc write (registration race condition)
+  await awaitUserDocReady();
+
   let profile = null;
-  try { profile = await getProfile(user.uid); } catch(e) {}
+  try { profile = await getProfile(user.uid, { fresh: true }); } catch(e) {}
 
   S.players[0] = {
     name: user.displayName || user.email || 'Jogador',

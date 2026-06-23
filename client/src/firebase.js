@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { getFirestore, doc, getDoc, getDocFromServer, setDoc, updateDoc, increment, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, onSnapshot } from 'firebase/firestore';
 const firebaseConfig = {
   apiKey: "AIzaSyAjiGVb3y4DXXM8gxElAf_SV1prykh3cD0",
@@ -33,14 +33,22 @@ export async function ensureUserDoc(user, extra = {}) {
     await setDoc(ref, {
       uid: user.uid,
       displayName: user.displayName || extra.displayName || 'Jogador',
-      email: user.email,
+      email: user.email || '',
       cpf: extra.cpf || '',
       balance: 0, wins: 0, losses: 0,
-      level: 1, xp: 0, createdAt: serverTimestamp(),
+      level: 1, xp: 0,
       chips: 200, ownedCues: ['basic'], equippedCue: 'basic',
+      profileComplete: false,
+      createdAt: serverTimestamp(),
     });
   } else {
-    if (!snap.data().chips) await updateDoc(ref, { chips: 200 });
+    // Patch any missing fields on existing docs from before these fields existed
+    const data = snap.data();
+    const patch = {};
+    if (!data.chips)      patch.chips = 200;
+    if (!data.ownedCues)  patch.ownedCues = ['basic'];
+    if (!data.equippedCue) patch.equippedCue = 'basic';
+    if (Object.keys(patch).length) await updateDoc(ref, patch);
   }
 }
 
@@ -66,24 +74,6 @@ export const redirectResultPromise = getRedirectResult(auth)
 
 export function login(email, password) {
   return signInWithEmailAndPassword(auth, email, password);
-}
-
-export function register(email, password, displayName) {
-  return createUserWithEmailAndPassword(auth, email, password).then(async cred => {
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      uid: cred.user.uid,
-      displayName,
-      email,
-      balance: 0,        // saldo em fichas
-      wins: 0,
-      losses: 0,
-      level: 1,
-      xp: 0,
-      createdAt: serverTimestamp(),
-      chips: 200, ownedCues: ['basic'], equippedCue: 'basic',
-    });
-    return cred;
-  });
 }
 
 export function logout() {
