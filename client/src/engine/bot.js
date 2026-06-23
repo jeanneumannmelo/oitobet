@@ -6,9 +6,8 @@ const BOT_AIM_FRAMES  = 45;
 const BOT_THINK_MIN   = 2.5 * 60;
 const BOT_THINK_MAX   = 5.0 * 60;
 
-// Difficulty 5 thinks faster — a pro doesn't hesitate
-const BOT_THINK_MIN_HARD = 0.8 * 60;
-const BOT_THINK_MAX_HARD = 1.6 * 60;
+const BOT_THINK_MIN_HARD = 0.6 * 60;
+const BOT_THINK_MAX_HARD = 1.2 * 60;
 
 function botThinkDelay() {
   if (S.botDifficulty >= 5) {
@@ -32,7 +31,7 @@ function pathClear(x1, y1, x2, y2, exc) {
   for (const b of S.balls) {
     if (b.out) continue;
     if (exc && exc.includes(b.id)) continue;
-    if (ptSegDist(b.x, b.y, x1, y1, x2, y2) < S.BR * 1.95) return false;
+    if (ptSegDist(b.x, b.y, x1, y1, x2, y2) < S.BR * 1.92) return false;
   }
   return true;
 }
@@ -46,28 +45,30 @@ function ghostClear(gx, gy, excludeId) {
   return true;
 }
 
-// Estimate whether the cue ball scratches after hitting the ghost point.
-// Uses two models: straight-through (low cut angle) and perpendicular deflection (stun).
+// Estimate scratch risk — reduced conservativeness vs old version
 function scratchRisk(cbX, cbY, gx, gy, shotAng, cutAng) {
-  const extDist = 320;
+  const extDist = 180; // was 320 — more realistic cue ball travel after contact
 
-  // 1. Straight-through model (small cut = cue ball keeps going along shot line)
-  if (cutAng < 0.55) {
+  // Straight-through model (small cut angle)
+  if (cutAng < 0.50) {
     const ex = gx + Math.cos(shotAng) * extDist;
     const ey = gy + Math.sin(shotAng) * extDist;
     for (const p of S.POCKETS) {
-      if (ptSegDist(p.x, p.y, gx, gy, ex, ey) < S.BR * 2.2) return true;
+      if (ptSegDist(p.x, p.y, gx, gy, ex, ey) < S.BR * 1.6) return true; // was 2.2
     }
   }
 
-  // 2. Perpendicular deflection model (stun shot — typical for medium power)
-  //    Cue ball deflects ~90° from shot direction; try both sides
+  // Perpendicular deflection model (stun) — only check closest few pockets
+  const nearPockets = S.POCKETS.slice().sort((a, b) =>
+    Math.hypot(a.x - gx, a.y - gy) - Math.hypot(b.x - gx, b.y - gy)
+  ).slice(0, 3);
+
   for (const sign of [1, -1]) {
     const perpAng = shotAng + sign * Math.PI / 2;
     const px2 = gx + Math.cos(perpAng) * extDist;
     const py2 = gy + Math.sin(perpAng) * extDist;
-    for (const p of S.POCKETS) {
-      if (ptSegDist(p.x, p.y, gx, gy, px2, py2) < S.BR * 2.2) return true;
+    for (const p of nearPockets) {
+      if (ptSegDist(p.x, p.y, gx, gy, px2, py2) < S.BR * 1.6) return true;
     }
   }
 
@@ -75,25 +76,21 @@ function scratchRisk(cbX, cbY, gx, gy, shotAng, cutAng) {
 }
 
 // Estimate cue ball end position after a stun shot.
-// Used for look-ahead scoring.
 function estimateCbEnd(gx, gy, shotAng, power) {
-  // Stun: cue ball goes perpendicular to aim from contact point
-  // Pick the direction that keeps cue ball in-bounds best
-  const dist = power * 100;
+  const dist = power * 110;
   for (const sign of [1, -1]) {
     const ang = shotAng + sign * Math.PI / 2;
     const ex = gx + Math.cos(ang) * dist;
     const ey = gy + Math.sin(ang) * dist;
-    if (ex > S.PX + S.BR*3 && ex < S.PX + S.PW - S.BR*3 &&
-        ey > S.PY + S.BR*3 && ey < S.PY + S.PH - S.BR*3) {
+    if (ex > S.PX + S.BR * 3 && ex < S.PX + S.PW - S.BR * 3 &&
+        ey > S.PY + S.BR * 3 && ey < S.PY + S.PH - S.BR * 3) {
       return { x: ex, y: ey };
     }
   }
-  // Fallback: center of table
   return { x: S.PX + S.PW / 2, y: S.PY + S.PH / 2 };
 }
 
-function evalShot(cb, tb, pocket) {
+function evalShot(cb, tb, pocket, relaxed = false) {
   const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
   const gx = tb.x - Math.cos(angTP) * S.BR * 2;
   const gy = tb.y - Math.sin(angTP) * S.BR * 2;
@@ -106,23 +103,24 @@ function evalShot(cb, tb, pocket) {
   const cutAng = Math.abs(angDiff(angTP, shotAng));
   if (cutAng > Math.PI / 2) return -Infinity;
 
-  // Discard shots with high scratch risk
-  if (scratchRisk(cb.x, cb.y, gx, gy, shotAng, cutAng)) return -Infinity;
+  // Skip scratch check in relaxed mode (fallback search)
+  if (!relaxed && scratchRisk(cb.x, cb.y, gx, gy, shotAng, cutAng)) return -Infinity;
 
   const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
   const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
 
-  // Prefer shots that leave cue ball near center (position play)
-  const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+  const maxPow = S.botDifficulty >= 5 ? 1.0 : 0.92;
+  const power = Math.min(maxPow, Math.max(0.28, (cueDist + tbDist) / 360));
   const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
   const cx = S.PX + S.PW / 2, cy = S.PY + S.PH / 2;
   const centerDist = Math.hypot(cbEnd.x - cx, cbEnd.y - cy);
-  const posBonus = Math.max(0, 180 - centerDist * 0.5);
+  const posBonus = Math.max(0, 220 - centerDist * 0.45); // increased from 180
 
-  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * 280 + posBonus;
+  // Difficulty 5: lower cut penalty — a pro can make any cut
+  const cutPenalty = S.botDifficulty >= 5 ? 180 : 280;
+  return 2000 - cueDist * 0.8 - tbDist * 0.6 - cutAng * cutPenalty + posBonus;
 }
 
-// Look-ahead: after this shot, how many good shots are available from estimated cue ball pos?
 function lookAheadBonus(gx, gy, shotAng, power, targets) {
   if (S.botDifficulty < 4) return 0;
   const cbEnd = estimateCbEnd(gx, gy, shotAng, power);
@@ -134,12 +132,29 @@ function lookAheadBonus(gx, gy, shotAng, power, targets) {
       if (s > bestNext) bestNext = s;
     }
   }
-  return bestNext > 0 ? Math.min(bestNext * 0.12, 160) : 0;
+  // Difficulty 5: much higher lookahead weight — plan ahead aggressively
+  const scale = S.botDifficulty >= 5 ? 0.40 : 0.12;
+  const cap   = S.botDifficulty >= 5 ? 600  : 160;
+  return bestNext > 0 ? Math.min(bestNext * scale, cap) : 0;
 }
 
 function botChooseShot() {
   const cb = S.balls[0];
   if (!cb || cb.out) return null;
+
+  // Opening break: hit the closest racked ball at max power
+  if (S.quebra) {
+    const racked = S.balls.filter(b => !b.out && b.id !== 0);
+    if (racked.length > 0) {
+      const apex = racked.reduce((closest, b) =>
+        Math.hypot(b.x - cb.x, b.y - cb.y) < Math.hypot(closest.x - cb.x, closest.y - cb.y) ? b : closest
+      );
+      const ang = Math.atan2(apex.y - cb.y, apex.x - cb.x);
+      const err = S.botDifficulty >= 5 ? 0.003 : 0.06;
+      return { ang: ang + (Math.random() - 0.5) * 2 * err, pow: 1.0, score: 9999 };
+    }
+  }
+
   const botType = S.tipos[S.BOT];
   let targets;
   if (botType === null) {
@@ -167,9 +182,9 @@ function botChooseShot() {
       const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
       const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
       const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
-      const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+      const maxPow = S.botDifficulty >= 5 ? 1.0 : 0.92;
+      const power = Math.min(maxPow, Math.max(0.28, (cueDist + tbDist) / 360));
 
-      // Remaining targets for look-ahead (exclude this ball)
       const remaining = targets.filter(t => t.id !== tb.id);
       const score = baseScore + lookAheadBonus(gx, gy, shotAng, power, remaining);
 
@@ -180,13 +195,38 @@ function botChooseShot() {
     });
   });
 
+  // Relaxed fallback: ignore scratch risk to find any valid shot
   if (!best && targets.length > 0) {
-    const tb = targets[0];
-    best = { ang: Math.atan2(tb.y - cb.y, tb.x - cb.x), pow: 0.55, score: -1 };
+    targets.forEach(tb => {
+      S.POCKETS.forEach(pocket => {
+        const baseScore = evalShot(cb, tb, pocket, true); // relaxed=true
+        if (baseScore === -Infinity) return;
+        const angTP = Math.atan2(pocket.y - tb.y, pocket.x - tb.x);
+        const gx = tb.x - Math.cos(angTP) * S.BR * 2;
+        const gy = tb.y - Math.sin(angTP) * S.BR * 2;
+        const shotAng = Math.atan2(gy - cb.y, gx - cb.x);
+        const cueDist = Math.hypot(gx - cb.x, gy - cb.y);
+        const tbDist = Math.hypot(pocket.x - tb.x, pocket.y - tb.y);
+        const power = Math.min(0.92, Math.max(0.28, (cueDist + tbDist) / 360));
+        const score = baseScore - 500; // penalize relaxed shots
+        if (score > bestScore) {
+          bestScore = score;
+          best = { ang: shotAng, pow: power, score };
+        }
+      });
+    });
   }
 
-  // Aim error scales down with difficulty; difficulty 5 is essentially perfect
-  const errByDiff = [0, 0.18, 0.10, 0.05, 0.018, 0.001];
+  // Last resort: aim at nearest ball
+  if (!best && targets.length > 0) {
+    const nearest = targets.reduce((a, b) =>
+      Math.hypot(b.x - cb.x, b.y - cb.y) < Math.hypot(a.x - cb.x, a.y - cb.y) ? b : a
+    );
+    best = { ang: Math.atan2(nearest.y - cb.y, nearest.x - cb.x), pow: 0.7, score: -1 };
+  }
+
+  // Aim error — difficulty 5 is near-perfect
+  const errByDiff = [0, 0.18, 0.10, 0.05, 0.018, 0.0003];
   const err = errByDiff[Math.min(5, Math.max(1, S.botDifficulty))] || 0.08;
   if (best) best.ang += (Math.random() - 0.5) * 2 * err;
   return best;
@@ -197,7 +237,8 @@ function botPlaceBall() {
   if (!cb) return;
   cb.out = false; cb.vx = 0; cb.vy = 0;
   let bestScore = -Infinity, bestX = S.PX + S.PW * 0.26, bestY = S.PY + S.PH / 2;
-  const step2 = S.PH / 5;
+  // Finer grid for difficulty 5
+  const step2 = S.botDifficulty >= 5 ? S.PH / 8 : S.PH / 5;
   for (let tx = S.PX + S.BR * 2; tx < S.PX + S.PW - S.BR * 2; tx += step2) {
     for (let ty = S.PY + S.BR * 2; ty < S.PY + S.PH - S.BR * 2; ty += step2) {
       let ok = true;
@@ -239,17 +280,15 @@ export function botTick() {
       if (S.botFakeLinger > 0) {
         const progress = 1 - S.botDelay / S.botFakeLinger;
 
-        // Higher difficulty = less wobble, commits faster
-        const wobbleScale = S.botDifficulty >= 5 ? 0.02 : 0.10;
-        const amp = wobbleScale * (1 - progress * 0.8);
+        const wobbleScale = S.botDifficulty >= 5 ? 0.008 : 0.10; // near-zero wobble at diff 5
+        const amp = wobbleScale * (1 - progress * 0.85);
         const wobble = Math.sin(S.botAimTick * 0.11) * amp
                      + Math.cos(S.botAimTick * 0.065) * amp * 0.45;
 
         const targetAngle = S.botTargetAng + wobble;
         const diff = angDiff(S.aimAng, targetAngle);
 
-        // Higher difficulty commits faster
-        const commitSpeed = S.botDifficulty >= 5 ? 0.06 + progress * 0.08 : 0.014 + progress * 0.038;
+        const commitSpeed = S.botDifficulty >= 5 ? 0.08 + progress * 0.12 : 0.014 + progress * 0.038;
         S.aimAng += diff * commitSpeed;
 
         S.power    = S.botTargetPow * Math.min(progress * 1.8, 1) * 0.60;
@@ -270,7 +309,7 @@ export function botTick() {
   } else if (S.botAimPhase === 1) {
     const diff = angDiff(S.aimAng, S.botTargetAng);
     const spd = 0.06 + Math.abs(diff) * 0.3;
-    if (Math.abs(diff) < 0.008) {
+    if (Math.abs(diff) < 0.006) {
       S.aimAng = S.botTargetAng; S.power = S.botTargetPow; S.pullBack = S.power * 42;
       S.botAimPhase = 2;
     } else {
