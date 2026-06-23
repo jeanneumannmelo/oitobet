@@ -42,6 +42,17 @@ app.get('/_diag/cartwave', async (_req, res) => {
     res.json({ ok: true, balance });
   } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
 });
+app.get('/_diag/cartwave-noproxy', async (_req, res) => {
+  try {
+    const BASE = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
+    const r = await fetch(`${BASE}/v2/finance/auth-token/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: process.env.CARTWAVE_EMAIL, client_secret: process.env.CARTWAVE_PASSWORD }),
+    });
+    const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = text.slice(0,200); }
+    res.json({ status: r.status, has_token: !!data?.access_token, data });
+  } catch(e) { res.status(502).json({ ok: false, error: e.message }); }
+});
 app.get('/_diag/pix', async (_req, res) => {
   try {
     const steps = await diagPix();
