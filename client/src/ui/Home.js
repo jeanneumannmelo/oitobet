@@ -1,8 +1,8 @@
 import { auth, db, logout, getProfile, getDailyRanking, subscribeTransaction, getTransactionOnce } from '../firebase.js';
-import { showShop, hideShop } from './Shop.js';
+
 import { S } from '../state.js';
 import {
-  collection, query, orderBy, limit, getDocs,
+  collection, query, orderBy, limit, getDocs, where,
   doc, getDoc, updateDoc, increment, serverTimestamp,
 } from 'firebase/firestore';
 import './home.css';
@@ -188,7 +188,6 @@ const NAV_LINKS = [
   { id:'carteira',  label:'Carteira',         labelMobile:'Carteira', icon: ICO_WALLET },
   { id:'ranking',   label:'Ranking',          labelMobile:'Ranking',  icon: ICO_TREND  },
   { id:'indicacao', label:'Indique e Ganhe',  labelMobile:'Indicar',  icon: ICO_GIFT   },
-  { id:'loja',      label:'Loja de Tacos',    labelMobile:'Loja',     icon: ICO_TABLE  },
   { id:'perfil',    label:'Perfil',           labelMobile:'Perfil',   icon: ICO_USER   },
 ];
 
@@ -213,7 +212,6 @@ function navHTML(activeView) {
         <div class="hp-bal-val" id="hp-bal-val">R$ 0,00</div>
       </div>
     </div>
-    <div class="chip-balance" title="Fichas da loja">💎 <span id="hp-chips-val">0</span></div>
     <button class="hp-avatar-btn" id="hp-avatar-btn" title="Perfil">🎱</button>
   </div>
   <div class="hp-profile-drop" id="hp-drop">
@@ -433,8 +431,14 @@ function viewCarteiraHTML(profile) {
     </div>
   </div>
 
+  <!-- Pending withdrawals -->
+  <div class="wt-hist-hd" style="margin-top:20px"><h3>${ICO_UP} Saques em Análise</h3></div>
+  <div id="wt-pending-withdrawals" class="wt-pending-list">
+    <div class="wt-tx-empty" style="font-size:12px;padding:12px 0">Carregando...</div>
+  </div>
+
   <!-- Transaction history -->
-  <div class="wt-hist-hd"><h3>${ICO_HIST} Histórico de Transações</h3></div>
+  <div class="wt-hist-hd" style="margin-top:20px"><h3>${ICO_HIST} Histórico de Transações</h3></div>
   <div class="wt-tx-empty">Nenhuma transação encontrada.</div>
 </div>`;
 }
@@ -1142,6 +1146,54 @@ function wireMultiplayerModal(el) {
   });
 }
 
+const STATUS_LABEL = {
+  pending_approval: { text: 'Em Análise', color: '#f5c800' },
+  processing:       { text: 'Processando', color: '#60a5fa' },
+  completed:        { text: 'Concluído', color: '#4ade80' },
+  rejected:         { text: 'Recusado', color: '#f87171' },
+  failed:           { text: 'Falhou', color: '#f87171' },
+};
+
+async function loadPendingWithdrawals(el) {
+  const container = el.querySelector('#wt-pending-withdrawals');
+  if (!container || !auth.currentUser) return;
+  try {
+    const uid = auth.currentUser.uid;
+    const q = query(
+      collection(db, 'transactions'),
+      where('uid', '==', uid),
+      orderBy('createdAt', 'desc'),
+      limit(20),
+    );
+    const snap = await getDocs(q);
+    const withdrawals = snap.docs.filter(d => d.data().type === 'withdrawal');
+    if (withdrawals.length === 0) {
+      container.innerHTML = '<div class="wt-tx-empty" style="font-size:12px;padding:12px 0">Nenhum saque em análise.</div>';
+      return;
+    }
+    container.innerHTML = withdrawals.map(d => {
+      const tx = d.data();
+      const st = STATUS_LABEL[tx.status] || { text: tx.status || '–', color: 'rgba(255,255,255,.4)' };
+      const date = tx.createdAt?.toDate ? tx.createdAt.toDate().toLocaleDateString('pt-BR') : '–';
+      const net = tx.amount - (tx.fee || 0);
+      return `
+        <div class="wt-pending-item">
+          <div class="wt-pi-left">
+            <div class="wt-pi-date">${date}</div>
+            <div class="wt-pi-key" title="${tx.pixKey || ''}">${tx.pixKey || '–'}</div>
+          </div>
+          <div class="wt-pi-right">
+            <div class="wt-pi-amount">${fmtBRL(net)}</div>
+            <div class="wt-pi-status" style="color:${st.color}">${st.text}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.warn('[pendingWithdrawals]', e);
+    container.innerHTML = '<div class="wt-tx-empty" style="font-size:12px;padding:12px 0">Erro ao carregar saques.</div>';
+  }
+}
+
 function wireCarteira(el) {
   const depInput = el.querySelector('#wt-dep-input');
   if (depInput) depInput.value = '50.00';
@@ -1157,6 +1209,8 @@ function wireCarteira(el) {
 
   el.querySelector('#wt-gerar-pix')?.addEventListener('click', () => handleDeposit(el));
   el.querySelector('#wt-solicitar-saque')?.addEventListener('click', () => handleWithdraw(el));
+
+  loadPendingWithdrawals(el);
 
   const sacInput = el.querySelector('#wt-sac-input');
   const feeBox   = el.querySelector('#wt-sac-fee');
@@ -1423,8 +1477,6 @@ function updateBalance(el) {
     _profile = p;
     const balEl = el.querySelector('#hp-bal-val');
     if (balEl) balEl.textContent = fmtBRL(p.balance || 0);
-    const chipsEl = el.querySelector('#hp-chips-val');
-    if (chipsEl) chipsEl.textContent = (p.chips || S.chips || 0).toLocaleString('pt-BR');
     const avatarBtn = el.querySelector('#hp-avatar-btn');
     if (avatarBtn) {
       if (user.photoURL) {
@@ -1460,15 +1512,6 @@ function switchView(viewId) {
   const content = _el.querySelector('.hp-content');
   if (!content) return;
 
-  // Handle shop as overlay, not a view
-  if (viewId === 'loja') {
-    showShop(_profile, () => {
-      // On shop close, sync chips display
-      const chipsEl = _el?.querySelector('#hp-chips-val');
-      if (chipsEl) chipsEl.textContent = (S.chips || 0).toLocaleString('pt-BR');
-    });
-    return;
-  }
 
   let html = '';
   if (viewId === 'inicio') {
@@ -1556,8 +1599,6 @@ export function refreshHome({ fresh = false } = {}) {
     _profile = p;
     const balEl = _el.querySelector('#hp-bal-val');
     if (balEl) balEl.textContent = fmtBRL(p.balance || 0);
-    const chipsEl = _el.querySelector('#hp-chips-val');
-    if (chipsEl) chipsEl.textContent = (p.chips || S.chips || 0).toLocaleString('pt-BR');
     if (_currentView === 'perfil') {
       const content = _el.querySelector('.hp-content');
       if (content) { content.innerHTML = viewPerfilHTML(user, _profile); wirePerfil(content); }
