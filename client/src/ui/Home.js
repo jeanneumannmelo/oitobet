@@ -164,7 +164,7 @@ function generateRooms(bots) {
       code: randCode(),
       timeIdx: i,
       avatar: Math.floor(Math.random() * EMOJIS.length),
-      photoURL: playerPhotoURL(playerName, i * 3 + 7),
+      photoURL: null,
       aiIdx: i % aiBots.length,
     });
   }
@@ -244,12 +244,7 @@ function viewInicioHTML() {
       <h3>Deposite via PIX e jogue agora!</h3>
       <p>Receba seu saldo em segundos e dispute partidas por dinheiro real</p>
     </div>
-    <button class="hp-banner-btn" data-view-action="depositar">Depositar</button>
-    <div class="hp-banner-dots">
-      <div class="hp-banner-dot active"></div>
-      <div class="hp-banner-dot"></div>
-      <div class="hp-banner-dot"></div>
-    </div>
+    <button class="hp-banner-btn" id="btn-banner-depositar">Depositar</button>
   </div>
 
   <!-- Section header -->
@@ -317,7 +312,7 @@ function roomCardHTML(room, balance) {
   return `
 <div class="room-card" data-room-id="${room.id}">
   <div class="rc-top">
-    <div class="rc-avatar"><img src="${room.photoURL}" class="rc-photo" alt="" onerror="this.style.display='none';this.nextSibling&&(this.nextSibling.style.display='flex')">${initialsAvatar(room.playerName, room.timeIdx)}</div>
+    <div class="rc-avatar">${initialsAvatar(room.playerName, room.timeIdx)}</div>
     <div class="rc-meta">
       <h4>@${room.nickname}</h4>
       <p>🇧🇷 ${room.location} · <span class="rc-waiting">Aguardando adversário</span></p>
@@ -944,6 +939,8 @@ function wireNav(el) {
 }
 
 function wireInicio(el) {
+  el.querySelector('#btn-banner-depositar')?.addEventListener('click', () => switchView('carteira'));
+
   el.querySelector('#btn-refresh-rooms')?.addEventListener('click', async () => {
     await fetchBots();
     _rooms = generateRooms(_bots);
