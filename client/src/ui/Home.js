@@ -1,4 +1,4 @@
-import { auth, db, logout, getProfile, getDailyRanking, subscribeTransaction } from '../firebase.js';
+import { auth, db, logout, getProfile, getDailyRanking, subscribeTransaction, getTransactionOnce } from '../firebase.js';
 import { showShop, hideShop } from './Shop.js';
 import { S } from '../state.js';
 import {
@@ -1284,11 +1284,6 @@ function showPixModal({ amount, pixCode, qrCodeUrl, txId, expiresAt }) {
 
   document.body.appendChild(overlay);
 
-  overlay.querySelector('#pix-modal-close').addEventListener('click', () => {
-    overlay.remove();
-    if (unsubTx) unsubTx();
-  });
-
   overlay.querySelector('#pix-copy-btn').addEventListener('click', () => {
     navigator.clipboard?.writeText(pixCode).catch(() => {});
     const btn = overlay.querySelector('#pix-copy-btn');
@@ -1298,25 +1293,46 @@ function showPixModal({ amount, pixCode, qrCodeUrl, txId, expiresAt }) {
 
   // Listen for payment confirmation
   let unsubTx = null;
-  if (txId) {
-    unsubTx = subscribeTransaction(txId, tx => {
-      const statusEl = overlay.querySelector('#pix-status');
-      if (tx.status === 'completed') {
-        if (statusEl) statusEl.innerHTML = '<span style="color:#4ade80;font-weight:700">✓ Pagamento confirmado! Saldo atualizado.</span>';
-        setTimeout(() => { overlay.remove(); }, 2500);
-        if (unsubTx) unsubTx();
-        // Refresh profile
-        if (auth.currentUser) {
-          getProfile(auth.currentUser.uid).then(p => {
-            if (p) { _profile = p; refreshBalanceDisplay(); }
-          });
-        }
-      } else if (tx.status === 'failed') {
-        if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">Pagamento não confirmado. Tente novamente.</span>';
-        if (unsubTx) unsubTx();
+  let pollTimer = null;
+  let settled = false;
+
+  function onTxUpdate(tx) {
+    if (settled) return;
+    const statusEl = overlay.querySelector('#pix-status');
+    if (tx.status === 'completed') {
+      settled = true;
+      clearInterval(pollTimer);
+      if (unsubTx) unsubTx();
+      if (statusEl) statusEl.innerHTML = '<span style="color:#4ade80;font-weight:700">✓ Pagamento confirmado! Saldo atualizado.</span>';
+      setTimeout(() => { overlay.remove(); }, 2500);
+      if (auth.currentUser) {
+        getProfile(auth.currentUser.uid).then(p => {
+          if (p) { _profile = p; refreshBalanceDisplay(); }
+        });
       }
-    });
+    } else if (tx.status === 'failed') {
+      settled = true;
+      clearInterval(pollTimer);
+      if (unsubTx) unsubTx();
+      if (statusEl) statusEl.innerHTML = '<span style="color:#f87171">Pagamento não confirmado. Tente novamente.</span>';
+    }
   }
+
+  if (txId) {
+    unsubTx = subscribeTransaction(txId, onTxUpdate);
+
+    // Polling fallback every 5s in case real-time listener has issues
+    pollTimer = setInterval(() => {
+      getTransactionOnce(txId).then(tx => { if (tx) onTxUpdate(tx); }).catch(() => {});
+    }, 5000);
+  }
+
+  overlay.querySelector('#pix-modal-close').addEventListener('click', () => {
+    settled = true;
+    clearInterval(pollTimer);
+    if (unsubTx) unsubTx();
+    overlay.remove();
+  });
 }
 
 function showToast(msg, type = 'info') {

@@ -173,9 +173,16 @@ export async function finalizeMatch({ player1Uid, player2Uid, winnerUid, xpGain 
 // Returns unsubscribe function.
 export function subscribeTransaction(txId, callback) {
   const ref = doc(db, 'transactions', txId);
-  return onSnapshot(ref, snap => {
-    if (snap.exists()) callback(snap.data());
-  });
+  return onSnapshot(
+    ref,
+    snap => { if (snap.exists()) callback(snap.data()); },
+    err => { console.error('[subscribeTransaction] listener error:', err.code, err.message); },
+  );
+}
+
+export async function getTransactionOnce(txId) {
+  const snap = await getDoc(doc(db, 'transactions', txId));
+  return snap.exists() ? snap.data() : null;
 }
 
 export async function purchaseCue(uid, cueId, cost) {
