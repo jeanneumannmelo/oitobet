@@ -162,18 +162,33 @@ export async function diagPix() {
   try { hmacHeader = hmacSign(bodyStr); steps.hmac = { ok: true }; }
   catch(e) { steps.hmac = { ok: false, error: e.message }; }
 
-  try {
-    const r = await proxiedFetch(`${BASE_URL}/v2/finance/create-pix-copy-and-paste-web`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
-      body: bodyStr,
-    });
-    const text = await r.text();
-    let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 400); }
-    steps.pix = { status: r.status, body: parsed };
-  } catch(e) {
-    steps.pix = { error: e.message, cause: e.cause?.code || e.cause?.message || String(e.cause || '') };
+  const candidates = [
+    '/v2/finance/create-copy-and-paste-simplified',
+    '/v2/finance/pix/create-copy-and-paste-simplified',
+    '/v2/finance/create-pix-copy-and-paste-simplified',
+    '/v2/finance/create-pix-copy-and-paste-web-simplified',
+    '/v2/finance/create-pix-copy-and-paste-web',
+    '/pix/create-copy-and-paste-simplified',
+    '/v2/pix/create-copy-and-paste-simplified',
+  ];
+
+  const pixResults = {};
+  for (const path of candidates) {
+    try {
+      const r = await proxiedFetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'hmac': hmacHeader },
+        body: bodyStr,
+      });
+      const text = await r.text();
+      let parsed; try { parsed = JSON.parse(text); } catch { parsed = text.slice(0, 200); }
+      pixResults[path] = { status: r.status, body: parsed };
+      if (r.status !== 404) break;
+    } catch(e) {
+      pixResults[path] = { error: e.message };
+    }
   }
+  steps.pix = pixResults;
 
   return steps;
 }
