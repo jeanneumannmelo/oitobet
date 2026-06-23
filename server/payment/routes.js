@@ -206,6 +206,63 @@ router.post('/admin/reject-withdrawal/:txId', verifyAdminSecret, async (req, res
   }
 });
 
+// ── GET /api/admin/user-lookup?email=... ──────────────────────────────────────
+router.get('/admin/user-lookup', verifyAdminSecret, async (req, res) => {
+  const email = (req.query.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email obrigatório.' });
+  try {
+    let authUser = null;
+    try { authUser = await adminAuth.getUserByEmail(email); } catch (_) {}
+
+    let firestoreDoc = null;
+    if (authUser) {
+      const snap = await adminDb.collection('users').doc(authUser.uid).get();
+      if (snap.exists) firestoreDoc = snap.data();
+    } else {
+      // Tenta buscar por email no Firestore (caso o doc exista sem Auth)
+      const snap = await adminDb.collection('users').where('email', '==', email).limit(1).get();
+      if (!snap.empty) firestoreDoc = snap.docs[0].data();
+    }
+
+    if (!authUser && !firestoreDoc) return res.status(404).json({ found: false, message: 'Usuário não encontrado.' });
+
+    res.json({
+      found: true,
+      auth: authUser ? {
+        uid: authUser.uid,
+        email: authUser.email,
+        displayName: authUser.displayName,
+        emailVerified: authUser.emailVerified,
+        disabled: authUser.disabled,
+        createdAt: authUser.metadata?.creationTime,
+        lastSignIn: authUser.metadata?.lastSignInTime,
+        providers: authUser.providerData?.map(p => p.providerId),
+      } : null,
+      firestore: firestoreDoc ? {
+        uid: firestoreDoc.uid,
+        displayName: firestoreDoc.displayName,
+        email: firestoreDoc.email,
+        balance: firestoreDoc.balance,
+        commissionBalance: firestoreDoc.commissionBalance,
+        totalDeposited: firestoreDoc.totalDeposited,
+        totalWithdrawn: firestoreDoc.totalWithdrawn,
+        wins: firestoreDoc.wins,
+        losses: firestoreDoc.losses,
+        level: firestoreDoc.level,
+        referredBy: firestoreDoc.referredBy,
+        referralCount: firestoreDoc.referralCount,
+        profileComplete: firestoreDoc.profileComplete,
+        cpf: firestoreDoc.cpf ? '***' + firestoreDoc.cpf.slice(-3) : null,
+        phone: firestoreDoc.phone,
+        createdAt: firestoreDoc.createdAt,
+      } : null,
+    });
+  } catch (e) {
+    console.error('[admin user-lookup]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ── POST /api/webhooks/cartwave ───────────────────────────────────────────────
 router.post('/webhooks/cartwave', async (req, res) => {
   const rawBody = req.rawBody;
