@@ -31,11 +31,20 @@ function drawCircularPhoto(img, cx, cy, r, isActive, playerIdx) {
   if (img && img.complete && img.naturalWidth > 0) {
     ctx.drawImage(img, cx - r, cy - r, r * 2, r * 2);
   } else {
-    ctx.fillStyle = isActive ? '#1a2a20' : '#161620'; ctx.fill();
-    ctx.fillStyle = isActive ? '#f0c030' : '#5050a0';
-    ctx.font = `bold ${Math.round(r * 0.72)}px Arial`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText((S.players[playerIdx]?.name || '?')[0].toUpperCase(), cx, cy + 1);
+    // Generic avatar background
+    const bg = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    bg.addColorStop(0, isActive ? '#1e2a38' : '#141420');
+    bg.addColorStop(1, isActive ? '#0e1820' : '#0c0c18');
+    ctx.fillStyle = bg; ctx.fill();
+    // Person silhouette
+    ctx.fillStyle = isActive ? 'rgba(180,200,220,0.55)' : 'rgba(120,120,160,0.4)';
+    // Head circle
+    const hr = r * 0.34;
+    ctx.beginPath(); ctx.arc(cx, cy - r * 0.18, hr, 0, Math.PI * 2); ctx.fill();
+    // Body / shoulders arc
+    ctx.beginPath();
+    ctx.arc(cx, cy + r * 0.85, r * 0.62, Math.PI * 1.18, Math.PI * 1.82, false);
+    ctx.fill();
   }
   ctx.restore();
 }

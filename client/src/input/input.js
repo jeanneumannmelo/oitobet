@@ -38,15 +38,17 @@ export function startDrag(cx, cy) {
     }
     return;
   }
-  // In online mode, only act on our turn
-  if (S.mode === 'online' && S.turn !== S.myIdx) return;
-  if (S.mode === 'offline' && S.turn === S.BOT) return;
-
+  // Resign button is always clickable for player 0 (checked before turn guard)
   const g2 = toGame(cx, cy);
   const rb = S.resignBtn;
   if (g2.x >= rb.x && g2.x <= rb.x + rb.w && g2.y >= rb.y && g2.y <= rb.y + rb.h) {
     if (S.estado === 'mira' || S.estado === 'ballInHand') { S.resignConfirm = true; return; }
   }
+
+  // In online mode, only act on our turn
+  if (S.mode === 'online' && S.turn !== S.myIdx) return;
+  if (S.mode === 'offline' && S.turn === S.BOT) return;
+
   S.isDragging = true;
   updateDrag(cx, cy);
 }
