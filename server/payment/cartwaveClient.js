@@ -185,14 +185,22 @@ export async function diagPix() {
   // Also try hmac as base64 format
   const hmacB64 = crypto.createHmac('sha512', HMAC_SECRET || '').update(fullBodyStr).digest('base64');
 
+  // If the HMAC secret is a hex string, try decoding it to raw bytes for signing
+  let hmacKeyDecoded = null;
+  try {
+    const decoded = Buffer.from(HMAC_SECRET || '', 'hex');
+    if (decoded.length > 0) {
+      hmacKeyDecoded = crypto.createHmac('sha512', decoded).update(fullBodyStr).digest('hex');
+    }
+  } catch(e) {}
+
   // Test different HMAC header names — CartWave docs unclear on exact header
   const variants = [
-    { label: 'hmac-hex',         headerName: 'hmac',        hmacVal: fullHmac },
-    { label: 'x-signature-hex',  headerName: 'x-signature', hmacVal: fullHmac },
-    { label: 'x-hmac-hex',       headerName: 'x-hmac',      hmacVal: fullHmac },
-    { label: 'signature-hex',    headerName: 'signature',   hmacVal: fullHmac },
-    { label: 'hmac-b64',         headerName: 'hmac',        hmacVal: hmacB64  },
-    { label: 'no-hmac',          headerName: null,           hmacVal: null     },
+    { label: 'hmac-hex',          headerName: 'hmac',        hmacVal: fullHmac       },
+    { label: 'hmac-decoded-key',  headerName: 'hmac',        hmacVal: hmacKeyDecoded  },
+    { label: 'x-signature-hex',   headerName: 'x-signature', hmacVal: fullHmac       },
+    { label: 'hmac-b64',          headerName: 'hmac',        hmacVal: hmacB64         },
+    { label: 'no-hmac',           headerName: null,           hmacVal: null            },
   ];
 
   const pixResults = {};
