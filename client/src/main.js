@@ -23,6 +23,12 @@ import { showPreGame } from './ui/PreGame.js';
 import { setOnMatchStart } from './net/socket.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
+// Capture referral code from URL and persist for post-login registration
+(function captureRef() {
+  const ref = new URLSearchParams(window.location.search).get('ref');
+  if (ref) localStorage.setItem('oitobet_ref', ref);
+})();
+
 if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(() => {});
 window.addEventListener('resize', resize);
 resize();
@@ -88,8 +94,23 @@ setOnMatchStart(async ({ betAmount }) => {
   if (!gameStarted) { gameStarted = true; loop(); }
 });
 
+async function registerReferral(user) {
+  const refCode = localStorage.getItem('oitobet_ref');
+  if (!refCode || refCode === user.uid) return;
+  try {
+    const token = await user.getIdToken();
+    const r = await fetch('/api/referral/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ refCode }),
+    });
+    if (r.ok) localStorage.removeItem('oitobet_ref');
+  } catch {}
+}
+
 async function handleLoggedIn(user) {
   hideAuth();
+  registerReferral(user);
 
   let profile = null;
   try { profile = await getProfile(user.uid); } catch(e) {}

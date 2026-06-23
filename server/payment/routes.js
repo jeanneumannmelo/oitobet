@@ -318,6 +318,59 @@ async function processWebhookEvent({ eventType, tag, amount, data }) {
   }
 }
 
+// ── POST /api/referral/register ───────────────────────────────────────────────
+router.post('/referral/register', verifyFirebaseToken, async (req, res) => {
+  const refCode = String(req.body?.refCode || '').trim();
+  if (!refCode || refCode === req.uid) {
+    return res.status(400).json({ error: 'Código inválido.' });
+  }
+  try {
+    const userRef = adminDb.collection('users').doc(req.uid);
+    const snap = await userRef.get();
+    if (!snap.exists()) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    if (snap.data().referredBy) return res.json({ success: true, already: true });
+
+    const referrerSnap = await adminDb.collection('users').doc(refCode).get();
+    if (!referrerSnap.exists()) return res.status(404).json({ error: 'Referrer não encontrado.' });
+
+    await adminDb.runTransaction(async t => {
+      t.update(userRef, { referredBy: refCode });
+      t.update(adminDb.collection('users').doc(refCode), {
+        referralCount: FieldValue.increment(1),
+      });
+    });
+    console.log(`[referral] uid=${req.uid} referred by ${refCode}`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[referral/register]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
+// ── POST /api/commission/transfer ─────────────────────────────────────────────
+router.post('/commission/transfer', verifyFirebaseToken, async (req, res) => {
+  try {
+    const userRef = adminDb.collection('users').doc(req.uid);
+    await adminDb.runTransaction(async t => {
+      const snap = await t.get(userRef);
+      if (!snap.exists()) throw new Error('Usuário não encontrado');
+      const commBal = snap.data().commissionBalance || 0;
+      if (commBal < 10) throw new Error('INSUFFICIENT_COMMISSION');
+      t.update(userRef, {
+        commissionBalance: FieldValue.increment(-commBal),
+        balance: FieldValue.increment(commBal),
+      });
+    });
+    res.json({ success: true });
+  } catch (e) {
+    if (e.message === 'INSUFFICIENT_COMMISSION') {
+      return res.status(400).json({ error: 'Saldo de comissão mínimo é R$ 10,00.' });
+    }
+    console.error('[commission/transfer]', e.message);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+});
+
 // ── POST /api/game/debit-bet ──────────────────────────────────────────────────
 router.post('/game/debit-bet', verifyFirebaseToken, async (req, res) => {
   const betAmount = Number(req.body?.betAmount);
@@ -382,6 +435,17 @@ router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
     }
 
     await withTimeout(userRef.update(updates), 10000);
+
+    // Commission: when loser had a referred-by, credit 70% of their bet to the referrer
+    if (!playerWon && betAmount > 0 && data.referredBy) {
+      const commission = Math.round(betAmount * 0.70 * 100) / 100;
+      adminDb.collection('users').doc(data.referredBy).update({
+        commissionBalance: FieldValue.increment(commission),
+        totalCommissionEarned: FieldValue.increment(commission),
+      }).catch(e => console.error('[commission] failed to credit referrer:', e.message));
+      console.log(`[commission] referrer=${data.referredBy} += ${commission} (loser=${req.uid} bet=${betAmount})`);
+    }
+
     res.json({ success: true });
   } catch (e) {
     console.error('[game/finalize]', e.message);

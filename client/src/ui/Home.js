@@ -443,12 +443,16 @@ function viewCarteiraHTML(profile) {
 </div>`;
 }
 
-function viewIndicacaoHTML(user) {
-  const link = `https://oitobet.com/cadastro?ref=${randCode()}`;
+function viewIndicacaoHTML(user, profile) {
+  const link = `https://oitobet.com.br/?ref=${user.uid}`;
+  const commBal    = profile?.commissionBalance    || 0;
+  const totalEarned = profile?.totalCommissionEarned || 0;
+  const referralCount = profile?.referralCount     || 0;
+  const canTransfer = commBal >= 10;
   return `
 <div class="hp-view" id="view-indicacao">
   <div class="hp-section-hd" style="margin-bottom:16px">
-    <div><h2>Indique e Ganhe</h2><p style="color:rgba(255,255,255,.38);font-size:13px;margin:0">Indique amigos e ganhe R$ 5,00 no primeiro depósito de cada um</p></div>
+    <div><h2>Indique e Ganhe</h2><p style="color:rgba(255,255,255,.38);font-size:13px;margin:0">Ganhe 70% do que seus indicados perderem nas apostas</p></div>
   </div>
 
   <div class="ind-grid">
@@ -456,10 +460,10 @@ function viewIndicacaoHTML(user) {
     <div class="ind-card">
       <div class="ind-card-hd">${ICO_WALLET} <h3>Carteira de Afiliado</h3></div>
       <div class="ind-bal-label">Saldo disponível</div>
-      <div class="ind-bal-amount">R$ 0,00</div>
-      <div class="ind-val-display">R$ 0,00</div>
-      <button class="ind-transfer-btn">Transferir para Saldo</button>
-      <div class="ind-note">Mínimo R$ 10,00 · Transfere para seu saldo principal</div>
+      <div class="ind-bal-amount" id="ind-comm-bal">${fmtBRL(commBal)}</div>
+      <div class="ind-val-display">Total ganho: <strong>${fmtBRL(totalEarned)}</strong></div>
+      <button class="ind-transfer-btn" id="ind-transfer-btn" ${canTransfer ? '' : 'disabled'}>${canTransfer ? 'Transferir para Saldo' : `Mínimo R$ 10,00 (atual ${fmtBRL(commBal)})`}</button>
+      <div class="ind-note">Transferência imediata para seu saldo principal</div>
     </div>
 
     <!-- Link de indicação -->
@@ -471,24 +475,14 @@ function viewIndicacaoHTML(user) {
       </div>
       <div class="ind-stats-grid">
         <div class="ind-stat">
-          <div class="is-label">Cadastros</div>
-          <div class="is-sub">Total de indicados</div>
-          <div class="is-val">0</div>
+          <div class="is-label">Indicados</div>
+          <div class="is-sub">Total cadastros</div>
+          <div class="is-val">${referralCount}</div>
         </div>
         <div class="ind-stat">
-          <div class="is-label">Ativos</div>
-          <div class="is-sub">Que depositaram</div>
-          <div class="is-val">0</div>
-        </div>
-        <div class="ind-stat">
-          <div class="is-label">Faturado</div>
-          <div class="is-sub">Total ganho</div>
-          <div class="is-val green">R$ 0,00</div>
-        </div>
-        <div class="ind-stat">
-          <div class="is-label">Sacado</div>
-          <div class="is-sub">Transferido</div>
-          <div class="is-val">R$ 0,00</div>
+          <div class="is-label">Comissão</div>
+          <div class="is-sub">70% das perdas deles</div>
+          <div class="is-val green">${fmtBRL(totalEarned)}</div>
         </div>
       </div>
     </div>
@@ -512,35 +506,35 @@ function viewIndicacaoHTML(user) {
         <div class="ind-step">
           <div class="ind-step-num s2">2</div>
           <div>
-            <h4>Ganhe R$ 5,00 de Bônus</h4>
-            <p>No primeiro depósito de cada indicado.</p>
+            <h4>Indicado aposta e perde</h4>
+            <p>Toda vez que seu indicado perder uma aposta, você recebe.</p>
           </div>
         </div>
         <div class="ind-step">
           <div class="ind-step-num s3">3</div>
           <div>
-            <h4>Acumule Ganhos</h4>
-            <p>Saque suas comissões a qualquer momento via PIX.</p>
+            <h4>70% vai para você</h4>
+            <p>Acumule e transfira para seu saldo a qualquer momento.</p>
           </div>
         </div>
       </div>
-      <div class="ind-note">Saque mínimo R$ 10,00 via PIX. Ganho somente no primeiro depósito de cada indicado.</div>
+      <div class="ind-note">Saldo mínimo R$ 10,00 para transferência. Sem prazo de expiração.</div>
     </div>
 
     <!-- Desempenho -->
     <div class="ind-card">
-      <div class="ind-card-hd">${ICO_TREND} <h3>Desempenho</h3></div>
+      <div class="ind-card-hd">${ICO_TREND} <h3>Resumo</h3></div>
       <div class="ind-perf-row">
-        <div><div class="ind-perf-label">Taxa de Conversão</div><div class="ind-perf-sub">Cadastros que depositaram</div></div>
-        <div class="ind-perf-val">0</div>
+        <div><div class="ind-perf-label">Pessoas Indicadas</div><div class="ind-perf-sub">Que se cadastraram</div></div>
+        <div class="ind-perf-val">${profile?.referralCount || 0}</div>
       </div>
       <div class="ind-perf-row">
-        <div><div class="ind-perf-label">Média por Indicado</div><div class="ind-perf-sub">Ganho médio por ativo</div></div>
-        <div class="ind-perf-val">0</div>
+        <div><div class="ind-perf-label">Total Faturado</div><div class="ind-perf-sub">Comissões acumuladas</div></div>
+        <div class="ind-perf-val green">${fmtBRL(profile?.totalCommissionEarned || 0)}</div>
       </div>
       <div class="ind-perf-row">
-        <div><div class="ind-perf-label">Saldo Disponível</div><div class="ind-perf-sub">Disponível para saque</div></div>
-        <div class="ind-perf-val">0</div>
+        <div><div class="ind-perf-label">Disponível</div><div class="ind-perf-sub">Para transferir agora</div></div>
+        <div class="ind-perf-val">${fmtBRL(profile?.commissionBalance || 0)}</div>
       </div>
     </div>
   </div>
@@ -1413,6 +1407,29 @@ function wireIndicacao(el) {
     const btn = el.querySelector('#ind-copy-btn');
     if (btn) { btn.innerHTML = `${ICO_COPY} Copiado!`; setTimeout(() => btn.innerHTML = `${ICO_COPY} Copiar`, 2000); }
   });
+
+  el.querySelector('#ind-transfer-btn')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#ind-transfer-btn');
+    if (!btn || btn.disabled) return;
+    btn.disabled = true; btn.textContent = 'Transferindo…';
+    try {
+      const token = await getIdToken();
+      const res = await fetch('/api/commission/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error || 'Erro na transferência', 'error'); btn.disabled = false; btn.textContent = 'Transferir para Saldo'; return; }
+      showToast('Comissão transferida para seu saldo!', 'success');
+      if (auth.currentUser) {
+        const updated = await getProfile(auth.currentUser.uid, { fresh: true });
+        if (updated) { _profile = updated; refreshHome({ fresh: false }); }
+      }
+    } catch {
+      showToast('Erro de conexão. Tente novamente.', 'error');
+      btn.disabled = false; btn.textContent = 'Transferir para Saldo';
+    }
+  });
 }
 
 function wirePerfil(el) {
@@ -1521,7 +1538,7 @@ function switchView(viewId) {
   } else if (viewId === 'ranking') {
     html = viewRankingHTML();
   } else if (viewId === 'indicacao') {
-    html = viewIndicacaoHTML(user);
+    html = viewIndicacaoHTML(user, _profile);
   } else if (viewId === 'perfil') {
     html = viewPerfilHTML(user, _profile);
   }
