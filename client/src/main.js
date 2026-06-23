@@ -42,11 +42,12 @@ initInput();
 let gameStarted = false;
 
 function startGameWithBot(bot, betAmount = 0) {
+  // Full game state reset — prevents previous vitoria state triggering instant win
+  restartGame();
   S.botDifficulty = bot.difficulty || 1;
   S.betAmount = betAmount;
   S.mode = 'offline';
   S.BOT = 1;
-  S.gameEndHandled = false;
   S.players[1] = {
     name: bot.nickname || bot.name || 'Bot',
     coins: (bot.wins || 0) * 100,
