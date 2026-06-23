@@ -86,7 +86,11 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
       return res.status(400).json({ error: 'Chave PIX obrigatória.' });
     }
 
-    const totalDebit = amount + WITHDRAW_FEE;
+    // Taxa é descontada do valor enviado — saldo debitado é o valor solicitado
+    const netAmount = amount - WITHDRAW_FEE; // valor que chega ao usuário via PIX
+    if (netAmount <= 0) {
+      return res.status(400).json({ error: 'Valor insuficiente para cobrir a taxa de saque.' });
+    }
 
     // Debitar saldo atomicamente agora para evitar double-spend enquanto aguarda aprovação
     const userRef = adminDb.collection('users').doc(req.uid);
@@ -94,19 +98,20 @@ router.post('/payment/withdraw', paymentRateLimiter, verifyFirebaseToken, async 
       const snap = await t.get(userRef);
       if (!snap.exists) throw new Error('Usuário não encontrado');
       const balance = snap.data().balance || 0;
-      if (balance < totalDebit) throw new Error('INSUFFICIENT_BALANCE');
+      if (balance < amount) throw new Error('INSUFFICIENT_BALANCE');
       t.update(userRef, {
-        balance: FieldValue.increment(-totalDebit),
-        totalWithdrawn: FieldValue.increment(amount),
+        balance: FieldValue.increment(-amount),
+        totalWithdrawn: FieldValue.increment(netAmount),
       });
     });
 
     const txRef = await adminDb.collection('transactions').add({
       uid: req.uid,
       type: 'withdrawal',
-      amount,
+      amount,        // valor solicitado (debitado do saldo)
       fee: WITHDRAW_FEE,
-      totalDebit,
+      netAmount,     // valor enviado ao usuário (amount - fee)
+      totalDebit: amount,
       pixKey,
       pixKeyType,
       status: 'pending_approval',
@@ -137,10 +142,10 @@ router.post('/admin/approve-withdrawal/:txId', verifyAdminSecret, async (req, re
       return res.status(409).json({ error: `Status inválido: ${tx.status}` });
     }
 
-    const netAmount = tx.amount - (tx.fee || 0); // valor líquido após taxa da plataforma
+    const sendAmount = tx.netAmount ?? (tx.amount - (tx.fee || 0));
     let cashout;
     try {
-      cashout = await createCashout({ amount: netAmount, pixKey: tx.pixKey, externalId: txId });
+      cashout = await createCashout({ amount: sendAmount, pixKey: tx.pixKey, externalId: txId });
     } catch (e) {
       // Estornar saldo se CartWave falhar
       await adminDb.collection('users').doc(tx.uid).update({
@@ -180,11 +185,11 @@ router.post('/admin/reject-withdrawal/:txId', verifyAdminSecret, async (req, res
       return res.status(409).json({ error: `Status inválido: ${tx.status}` });
     }
 
-    // Estornar saldo + taxa
+    // Estornar o valor solicitado (totalDebit = amount, taxa não é cobrada)
     await adminDb.runTransaction(async t => {
       t.update(adminDb.collection('users').doc(tx.uid), {
         balance: FieldValue.increment(tx.totalDebit),
-        totalWithdrawn: FieldValue.increment(-tx.amount),
+        totalWithdrawn: FieldValue.increment(-(tx.netAmount ?? tx.amount - (tx.fee || 0))),
       });
       t.update(txSnap.ref, {
         status: 'rejected',

@@ -1210,9 +1210,9 @@ const WITHDRAW_FEE = 2;
 async function handleWithdraw(el) {
   const val = +(el.querySelector('#wt-sac-input')?.value) || 0;
   const bal = _profile?.balance || 0;
-  const totalDebit = val + WITHDRAW_FEE;
-  if (val < 10)        { showToast('Valor mínimo de saque é R$ 10,00', 'error'); return; }
-  if (totalDebit > bal) { showToast(`Saldo insuficiente (necessário ${fmtBRL(totalDebit)} incluindo taxa de R$2,00)`, 'error'); return; }
+  if (val < 10)  { showToast('Valor mínimo de saque é R$ 10,00', 'error'); return; }
+  if (val > bal) { showToast(`Saldo insuficiente (disponível ${fmtBRL(bal)})`, 'error'); return; }
+  if (val <= WITHDRAW_FEE) { showToast('Valor insuficiente para cobrir a taxa de R$2,00', 'error'); return; }
   const chave = (el.querySelector('#wt-chave-input')?.value || '').trim();
   if (!chave) { showToast('Informe sua chave PIX', 'error'); return; }
   const pixKeyType = el.querySelector('#wt-chave-tipo')?.value?.toLowerCase().replace('-', '') || 'cpf';
