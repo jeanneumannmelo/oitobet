@@ -27,7 +27,7 @@ function html() {
     <div class="lnd-container lnd-header-inner">
       <div class="lnd-brand">
         <img src="/oitobet.png" alt="OitoBet" onerror="this.style.display='none'">
-        <span class="lnd-brand-name">OITO<em>BET</em></span>
+        <span class="lnd-brand-name">OITO<em>BET</em> <span style="color:#00d470;font-style:italic">BRASIL</span></span>
       </div>
       <div class="lnd-header-actions">
         <button id="lnd-btn-login" class="lnd-link-btn">Login</button>
@@ -38,6 +38,19 @@ function html() {
 
   <!-- HERO -->
   <section class="lnd-hero">
+    <!-- Pool table background -->
+    <div class="lnd-hero-bg">
+      <div class="lnd-felt"></div>
+      <div class="lnd-rail">
+        <div class="lnd-pocket lnd-pocket-tl"></div>
+        <div class="lnd-pocket lnd-pocket-tm"></div>
+        <div class="lnd-pocket lnd-pocket-tr"></div>
+        <div class="lnd-pocket lnd-pocket-bl"></div>
+        <div class="lnd-pocket lnd-pocket-bm"></div>
+        <div class="lnd-pocket lnd-pocket-br"></div>
+      </div>
+      <div class="lnd-hero-overlay"></div>
+    </div>
     <div class="lnd-container lnd-hero-inner">
 
       <span class="lnd-badge-online">
@@ -48,12 +61,12 @@ function html() {
 
       <h1 class="lnd-hero-title">
         Jogue Sinuca e<br>
-        <span class="lnd-gold">Ganhe Dinheiro</span><br>
+        <span class="lnd-green">Ganhe Dinheiro</span><br>
         de Verdade
       </h1>
 
       <p class="lnd-hero-sub">
-        Desafie bots e jogadores reais 1v1 apostando via PIX. Saque instantâneo 24h.
+        Jogue 1v1 contra jogadores reais apostando via PIX. Saque instantâneo 24h.
       </p>
 
       <!-- 8-ball showcase -->
@@ -90,7 +103,7 @@ function html() {
         <div class="lnd-stat-label">Jogadores Ativos</div>
       </div>
       <div class="lnd-stat">
-        <div class="lnd-stat-num">R$ 500K+</div>
+        <div class="lnd-stat-num">R$ 5M+</div>
         <div class="lnd-stat-label">Pagos via PIX</div>
       </div>
       <div class="lnd-stat">
@@ -107,7 +120,7 @@ function html() {
   <!-- HOW IT WORKS -->
   <section class="lnd-how">
     <div class="lnd-container">
-      <h2 class="lnd-section-title">Como <span class="lnd-gold">funciona</span></h2>
+      <h2 class="lnd-section-title">Como <span class="lnd-green">funciona</span></h2>
       <p class="lnd-section-sub">Três passos entre você e o seu primeiro prêmio via PIX.</p>
       <div class="lnd-steps">
         <div class="lnd-step">
@@ -117,8 +130,8 @@ function html() {
         </div>
         <div class="lnd-step">
           <div class="lnd-step-icon">🎱</div>
-          <h3>2. Desafie e vença</h3>
-          <p>Entre na sala, desafie um bot ou jogador real. Embole todas as bolas e a 8 para vencer e levar o prêmio!</p>
+          <h3>2. Entre na sala e jogue</h3>
+          <p>Enfrente um jogador real 1v1. Embole todas as suas bolas e a 8 para vencer e levar o prêmio!</p>
         </div>
         <div class="lnd-step">
           <div class="lnd-step-icon">💸</div>
@@ -132,7 +145,7 @@ function html() {
   <!-- TESTIMONIALS -->
   <section class="lnd-testimonials">
     <div class="lnd-container">
-      <h2 class="lnd-section-title">Quem joga, <span class="lnd-gold">recomenda</span></h2>
+      <h2 class="lnd-section-title">Quem joga, <span class="lnd-green">recomenda</span></h2>
       <p class="lnd-section-sub" style="margin-bottom:32px"></p>
       <div class="lnd-reviews">
         <div class="lnd-review">
@@ -157,7 +170,7 @@ function html() {
   <!-- BOTTOM CTA -->
   <section class="lnd-cta-bottom">
     <div class="lnd-container">
-      <h2 class="lnd-section-title">Pronto para <span class="lnd-gold">jogar</span>?</h2>
+      <h2 class="lnd-section-title">Pronto para <span class="lnd-green">jogar</span>?</h2>
       <p class="lnd-section-sub">Teste grátis sem cadastro. Quando estiver pronto, jogue valendo e receba via PIX.</p>
       <div class="lnd-cta-btns">
         <button id="lnd-btn-play2" class="lnd-play-btn">🎮 COMEÇAR TESTE GRÁTIS</button>
@@ -171,7 +184,7 @@ function html() {
     <div class="lnd-container lnd-footer-inner">
       <div class="lnd-brand">
         <img src="/oitobet.png" alt="OitoBet" onerror="this.style.display='none'">
-        <span class="lnd-brand-name">OITO<em>BET</em></span>
+        <span class="lnd-brand-name">OITO<em>BET</em> <span style="color:#00d470;font-style:italic">BRASIL</span></span>
       </div>
       <p class="lnd-disclaimer">Jogue com responsabilidade. Plataforma destinada a maiores de 18 anos. Apostas envolvem risco: nunca jogue mais do que pode perder.</p>
       <p class="lnd-copyright">© ${year} OitoBet. Todos os direitos reservados.</p>
