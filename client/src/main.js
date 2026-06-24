@@ -21,7 +21,7 @@ import { showCompleteProfile, hideCompleteProfile } from './ui/CompleteProfile.j
 import { showHome, hideHome, refreshHome } from './ui/Home.js';
 import { showPreGame } from './ui/PreGame.js';
 import { setOnMatchStart } from './net/socket.js';
-import { showLanding, hideLanding, showGuestBanner, hideGuestBanner } from './ui/Landing.js';
+import { showLanding, hideLanding } from './ui/Landing.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 // Capture referral code from URL and persist for post-login registration
@@ -67,6 +67,15 @@ function startGameWithBot(bot, betAmount = 0) {
 async function handleGameEnd(winnerIdx) {
   if (S.gameEndHandled) return;
   S.gameEndHandled = true;
+
+  // Demo mode: after a short delay show registration screen
+  if (S._isGuest) {
+    setTimeout(() => {
+      S._isGuest = false;
+      showAuth('register');
+    }, 2200);
+    return;
+  }
 
   const user = auth.currentUser;
   if (!user) return;
@@ -156,7 +165,7 @@ async function handleLoggedIn(user) {
 function guestPlay() {
   S._isGuest = true;
   S.players[0] = {
-    name: 'Convidado',
+    name: 'Você',
     coins: 0, level: 1, xp: 0, wins: 0,
     flag: '🇧🇷', photoURL: null,
   };
@@ -164,20 +173,15 @@ function guestPlay() {
   S.equippedCue = 'basic';
   S.ownedCues = ['basic'];
 
-  const bot = { nickname: 'Bot Iniciante', difficulty: 2, wins: 18 };
-  const p1  = { name: 'Convidado', photoURL: null };
-  const p2  = { name: 'Bot Iniciante', photoURL: null };
+  const bot = { nickname: 'Marcelo S.', difficulty: 2, wins: 18 };
+  const p1  = { name: 'Você', photoURL: null };
+  const p2  = { name: 'Marcelo S.', photoURL: null };
 
   if (!gameStarted) { gameStarted = true; loop(); }
 
   showPreGame({ player1: p1, player2: p2, bet: 0, searching: false, onDone: () => {
     S.gameEndHandled = false;
     startGameWithBot(bot, 0);
-    showGuestBanner(() => {
-      S._isGuest = false;
-      hideGuestBanner();
-      showAuth();
-    });
   }});
 }
 
@@ -338,7 +342,6 @@ function loop() {
     S._goHome = false;
     S.rematchState = null;
     if (S._isGuest) {
-      hideGuestBanner();
       S._isGuest = false;
       showLanding({
         onPlay: guestPlay,
