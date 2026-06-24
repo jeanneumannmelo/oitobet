@@ -21,6 +21,7 @@ import { showCompleteProfile, hideCompleteProfile } from './ui/CompleteProfile.j
 import { showHome, hideHome, refreshHome } from './ui/Home.js';
 import { showPreGame } from './ui/PreGame.js';
 import { setOnMatchStart } from './net/socket.js';
+import { showLanding, hideLanding, showGuestBanner, hideGuestBanner } from './ui/Landing.js';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 // Capture referral code from URL and persist for post-login registration
@@ -151,6 +152,35 @@ async function handleLoggedIn(user) {
   }
 }
 
+// ── Guest / demo play (no account) ─────────────────────────────────────────
+function guestPlay() {
+  S._isGuest = true;
+  S.players[0] = {
+    name: 'Convidado',
+    coins: 0, level: 1, xp: 0, wins: 0,
+    flag: '🇧🇷', photoURL: null,
+  };
+  S.chips = 0;
+  S.equippedCue = 'basic';
+  S.ownedCues = ['basic'];
+
+  const bot = { nickname: 'Bot Iniciante', difficulty: 2, wins: 18 };
+  const p1  = { name: 'Convidado', photoURL: null };
+  const p2  = { name: 'Bot Iniciante', photoURL: null };
+
+  if (!gameStarted) { gameStarted = true; loop(); }
+
+  showPreGame({ player1: p1, player2: p2, bet: 0, searching: false, onDone: () => {
+    S.gameEndHandled = false;
+    startGameWithBot(bot, 0);
+    showGuestBanner(() => {
+      S._isGuest = false;
+      hideGuestBanner();
+      showAuth();
+    });
+  }});
+}
+
 function showHomeThenPlay() {
   showHome(async ({ bot, free, bet, mode }) => {
     if (mode === 'online') {
@@ -198,27 +228,30 @@ const _redirectTimeout = new Promise(resolve => setTimeout(resolve, 4000, null))
 
 // ── Top-level safety net ──────────────────────────────────────────────────────
 // If Firebase Auth never fires onAuthStateChanged (stuck redirect, network issue,
-// broken storage), show the login screen after 6 seconds regardless.
+// broken storage), show the landing/login after 6 seconds regardless.
 let _authResolved = false;
-setTimeout(() => {
-  if (_authResolved) return;
+function _showFallback() {
   hideSplash();
-  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
-    try { showAuth(); } catch (_) {}
+  const noUI = !document.getElementById('auth-overlay')
+    && !document.getElementById('home-overlay')
+    && !document.getElementById('landing-overlay');
+  if (noUI) {
+    try {
+      showLanding({
+        onPlay: guestPlay,
+        onLogin: () => showAuth(),
+        onRegister: () => showAuth(),
+      });
+    } catch (_) {}
   }
-}, 6000);
-
-// Same for JS errors — show login if nothing is on screen.
-window.addEventListener('error', () => {
-  hideSplash();
-  if (!document.getElementById('auth-overlay') && !document.getElementById('home-overlay')) {
-    try { showAuth(); } catch (_) {}
-  }
-});
+}
+setTimeout(() => { if (!_authResolved) _showFallback(); }, 6000);
+window.addEventListener('error', () => _showFallback());
 
 onAuth(async user => {
   _authResolved = true;
   if (user) {
+    hideLanding();
     handleLoggedIn(user);
   } else {
     // Wait for Google redirect to complete (or 4 s timeout, whichever first).
@@ -228,8 +261,15 @@ onAuth(async user => {
     hideHome();
     hideCompleteProfile();
     hideSplash();
-    if (!gameStarted) showAuth();
-    else location.reload();
+    if (!gameStarted) {
+      showLanding({
+        onPlay: guestPlay,
+        onLogin: () => showAuth('login'),
+        onRegister: () => showAuth('register'),
+      });
+    } else {
+      location.reload();
+    }
   }
 });
 
@@ -297,7 +337,17 @@ function loop() {
   if (S._goHome) {
     S._goHome = false;
     S.rematchState = null;
-    showHomeThenPlay();
+    if (S._isGuest) {
+      hideGuestBanner();
+      S._isGuest = false;
+      showLanding({
+        onPlay: guestPlay,
+        onLogin: () => showAuth('login'),
+        onRegister: () => showAuth('register'),
+      });
+    } else {
+      showHomeThenPlay();
+    }
   }
 
   // Detect turn change → trigger "Sua Vez" popup for human player

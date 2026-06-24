@@ -428,14 +428,24 @@ function switchTo(view) {
   }, 160);
 }
 
-export function showAuth() {
-  if (_overlay) { _overlay.classList.add('show'); return; }
-  _currentView = 'login';
+export function showAuth(view = 'login') {
+  if (_overlay) {
+    _overlay.classList.add('show');
+    if (view !== _currentView) switchTo(view);
+    return;
+  }
+  _currentView = view;
   _overlay = document.createElement('div');
   _overlay.id = 'auth-overlay';
-  _overlay.innerHTML = loginHTML() + rightPanel();
-  document.body.appendChild(_overlay);
-  wireLogin(_overlay);
+  if (view === 'register') {
+    _overlay.innerHTML = registerHTML() + rightPanel();
+    document.body.appendChild(_overlay);
+    wireRegister(_overlay);
+  } else {
+    _overlay.innerHTML = loginHTML() + rightPanel();
+    document.body.appendChild(_overlay);
+    wireLogin(_overlay);
+  }
 }
 
 export function hideAuth() {

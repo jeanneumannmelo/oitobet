@@ -93,6 +93,9 @@ export const S = {
   // ── Match finalization ──
   gameEndHandled: false,
 
+  // ── Guest / demo mode (no account) ──
+  _isGuest: false,
+
   // ── Rematch ──
   rematchState: null,   // null | 'waiting' | 'accepted' | 'rejected'
   rematchCountdown: 0,  // frames remaining until forced decision
