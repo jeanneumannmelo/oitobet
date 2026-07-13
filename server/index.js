@@ -11,15 +11,27 @@ import { registerWebhook, getAccountBalance, diagPix } from './payment/cartwaveC
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const http = createServer(app);
-const ALLOWED_ORIGINS = [
-  'https://oitobet.com.br',
-  'https://www.oitobet.com.br',
-  'http://localhost:5173',
-  'http://localhost:4173',
-  /^http:\/\/192\.168\./,  // rede local para testes
-];
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-diag-secret,hmac,x-signature');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 const io = new Server(http, {
-  cors: { origin: ALLOWED_ORIGINS, credentials: true },
+  cors: { origin: true, credentials: true },
   transports: ['websocket', 'polling'],
 });
 

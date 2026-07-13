@@ -1249,7 +1249,7 @@ async function handleDeposit(el) {
     const data = await res.json();
     if (!res.ok) { showToast(data.error || 'Erro ao gerar PIX', 'error'); return; }
 
-    showPixModal({ amount: val, pixCode: data.pixCode, qrCodeUrl: data.qrCodeUrl, txId: data.txId, expiresAt: data.expiresAt });
+    showPixModal({ amount: data.amount ?? val, pixCode: data.pixCode, qrCodeUrl: data.qrCodeUrl, txId: data.txId, expiresAt: data.expiresAt });
   } catch (e) {
     console.error('[deposit]', e);
     showToast('Erro de conexão. Tente novamente.', 'error');

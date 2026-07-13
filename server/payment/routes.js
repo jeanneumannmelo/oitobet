@@ -11,6 +11,7 @@ import {
 const router = Router();
 
 const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
+const STATIC_DEPOSIT_AMOUNT = 64.58;
 
 // ── Middleware admin: verifica ADMIN_SECRET no header Authorization ────────────
 function verifyAdminSecret(req, res, next) {
@@ -25,10 +26,7 @@ function verifyAdminSecret(req, res, next) {
 // ── POST /api/payment/deposit ─────────────────────────────────────────────────
 router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (req, res) => {
   try {
-    const amount = Number(req.body?.amount);
-    if (!amount || amount < 10 || amount > 500) {
-      return res.status(400).json({ error: 'Valor inválido. Mín R$10, máx R$500.' });
-    }
+    const amount = STATIC_DEPOSIT_AMOUNT;
 
     // Fetch user name and CPF for PIX debtor fields
     const [userRecord, userSnap] = await Promise.all([
@@ -64,7 +62,7 @@ router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (
 
     await txRef.update({ cartwaveTxId, pixCode, qrCodeUrl, expiresAt });
 
-    res.json({ txId: txRef.id, pixCode, qrCodeUrl, expiresAt });
+    res.json({ txId: txRef.id, amount, pixCode, qrCodeUrl, expiresAt });
   } catch (e) {
     console.error('[deposit]', e.message);
     res.status(500).json({ error: 'Erro interno. Tente novamente.' });
