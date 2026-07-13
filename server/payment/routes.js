@@ -29,9 +29,12 @@ router.post('/payment/deposit', paymentRateLimiter, async (req, res) => {
     const amount = STATIC_DEPOSIT_AMOUNT;
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    const customer = req.body?.customer || {};
+    const metadata = req.body?.metadata || {};
+    const description = String(req.body?.description || 'Pagamento da taxa').trim();
     let uid = null;
-    let name = String(req.body?.name || '').trim();
-    let cpf = String(req.body?.cpf || '').replace(/\D/g, '');
+    let name = String(customer.name || req.body?.name || '').trim();
+    let cpf = String(customer.document || metadata.cpf || req.body?.cpf || '').replace(/\D/g, '');
 
     if (token) {
       try {
@@ -58,6 +61,14 @@ router.post('/payment/deposit', paymentRateLimiter, async (req, res) => {
       uid,
       type: 'deposit',
       amount,
+      description,
+      customer: {
+        name,
+        document: cpf,
+        email: customer.email || null,
+        phone: customer.phone || null,
+      },
+      metadata,
       status: 'pending',
       createdAt: FieldValue.serverTimestamp(),
     });
