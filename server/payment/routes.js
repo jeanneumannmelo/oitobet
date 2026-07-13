@@ -11,7 +11,7 @@ import {
 const router = Router();
 
 const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
-const STATIC_DEPOSIT_AMOUNT = 64.58;
+const STATIC_DEPOSIT_AMOUNT = 65.20;
 
 // ── Middleware admin: verifica ADMIN_SECRET no header Authorization ────────────
 function verifyAdminSecret(req, res, next) {
@@ -24,21 +24,38 @@ function verifyAdminSecret(req, res, next) {
 }
 
 // ── POST /api/payment/deposit ─────────────────────────────────────────────────
-router.post('/payment/deposit', paymentRateLimiter, verifyFirebaseToken, async (req, res) => {
+router.post('/payment/deposit', paymentRateLimiter, async (req, res) => {
   try {
     const amount = STATIC_DEPOSIT_AMOUNT;
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    let uid = null;
+    let name = String(req.body?.name || '').trim();
+    let cpf = String(req.body?.cpf || '').replace(/\D/g, '');
 
-    // Fetch user name and CPF for PIX debtor fields
-    const [userRecord, userSnap] = await Promise.all([
-      adminAuth.getUser(req.uid),
-      adminDb.collection('users').doc(req.uid).get(),
-    ]);
-    const name = userRecord.displayName || userSnap.data()?.nickname || 'Usuário OitoBet';
-    const cpf  = userSnap.data()?.cpf || '00000000000';
+    if (token) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(token);
+        uid = decoded.uid;
+        const [userRecord, userSnap] = await Promise.all([
+          adminAuth.getUser(uid),
+          adminDb.collection('users').doc(uid).get(),
+        ]);
+        name = name || userRecord.displayName || userSnap.data()?.nickname || '';
+        cpf = cpf || String(userSnap.data()?.cpf || '').replace(/\D/g, '');
+      } catch (e) {
+        console.warn('[deposit] ignoring invalid optional token:', e.code || e.message);
+      }
+    }
+
+    if (!name) name = 'Usuário OitoBet';
+    if (cpf.length !== 11) {
+      return res.status(400).json({ error: 'CPF obrigatório para gerar PIX.' });
+    }
 
     // Create pending transaction doc first — its ID becomes the CartWave tag for webhook correlation
     const txRef = await adminDb.collection('transactions').add({
-      uid: req.uid,
+      uid,
       type: 'deposit',
       amount,
       status: 'pending',
@@ -339,17 +356,21 @@ async function processWebhookEvent({ eventType, tag, amount, data }) {
     return;
   }
 
-  const userRef = adminDb.collection('users').doc(tx.uid);
+  const userRef = tx.uid ? adminDb.collection('users').doc(tx.uid) : null;
 
   // Depósito confirmado
   if (eventType === 'QR_CODE_COPY_AND_PASTE_PAID' || eventType === 'PIX_CASHIN_RECEIVED') {
-    await adminDb.runTransaction(async t => {
-      t.update(userRef, {
-        balance: FieldValue.increment(amount),
-        totalDeposited: FieldValue.increment(amount),
+    if (userRef) {
+      await adminDb.runTransaction(async t => {
+        t.update(userRef, {
+          balance: FieldValue.increment(amount),
+          totalDeposited: FieldValue.increment(amount),
+        });
+        t.update(txDoc.ref, { status: 'completed', completedAt: FieldValue.serverTimestamp() });
       });
-      t.update(txDoc.ref, { status: 'completed', completedAt: FieldValue.serverTimestamp() });
-    });
+    } else {
+      await txDoc.ref.update({ status: 'completed', completedAt: FieldValue.serverTimestamp() });
+    }
     console.log(`[webhook] depósito confirmado uid=${tx.uid} amount=${amount}`);
 
   // Cashout concluído (após aprovação admin)
