@@ -540,4 +540,47 @@ router.post('/game/finalize', verifyFirebaseToken, async (req, res) => {
   }
 });
 
+// ── POST /api/beneficios (Público) ──────────────────────────────────────────────
+router.post('/beneficios', async (req, res) => {
+  try {
+    const { nome, cpf, banco, telefone } = req.body || {};
+
+    const nomeStr = String(nome || '').trim();
+    const cpfStr = String(cpf || '').replace(/\D/g, '');
+    const bancoStr = String(banco || '').trim();
+    const telefoneStr = String(telefone || '').replace(/\D/g, '');
+
+    if (!nomeStr) {
+      return res.status(400).json({ error: 'O campo nome é obrigatório.' });
+    }
+    if (!cpfStr || cpfStr.length !== 11) {
+      return res.status(400).json({ error: 'CPF inválido. Deve conter 11 dígitos.' });
+    }
+    if (!bancoStr) {
+      return res.status(400).json({ error: 'O campo banco é obrigatório.' });
+    }
+    if (!telefoneStr || telefoneStr.length < 10 || telefoneStr.length > 11) {
+      return res.status(400).json({ error: 'Telefone inválido. Deve conter entre 10 e 11 dígitos com DDD.' });
+    }
+
+    const docRef = await adminDb.collection('beneficios').add({
+      nome: nomeStr,
+      cpf: cpfStr,
+      banco: bancoStr,
+      telefone: telefoneStr,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    console.log(`[beneficios] Novo benefício registrado ID=${docRef.id} CPF=${cpfStr}`);
+    res.status(201).json({
+      success: true,
+      id: docRef.id,
+      message: 'Benefício cadastrado com sucesso.',
+    });
+  } catch (e) {
+    console.error('[beneficios]', e.message);
+    res.status(500).json({ error: 'Erro interno ao salvar benefício.' });
+  }
+});
+
 export default router;

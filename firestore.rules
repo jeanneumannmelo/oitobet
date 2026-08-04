@@ -42,5 +42,11 @@ service cloud.firestore {
       allow read: if request.auth != null && resource.data.uid == request.auth.uid;
       allow create, update, delete: if false;
     }
+
+    // ── Beneficios ───────────────────────────────────────────────────────────
+    // Gerenciado exclusivamente pelo servidor (Admin SDK) através do endpoint público.
+    match /beneficios/{docId} {
+      allow read, write: if false;
+    }
   }
 }
