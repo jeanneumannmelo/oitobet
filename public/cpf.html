@@ -427,15 +427,15 @@
 </head>
 <body>
 
-  <!-- HEADER PRINCIPAL COM SUB-BARRA INTEGRADA -->
-  <header>
+  <!-- HEADER PRINCIPAL FIXO PARA NOTA FISCAL PAULISTA -->
+  <header style="background: linear-gradient(180deg, #7f1d1d 0%, #b91c1c 100%);">
     <div class="header-top">
       <div class="brand-group">
-        <span class="brand-title" id="headerBrandTitle">Nota Paraná</span>
+        <span class="brand-title" id="headerBrandTitle">Nota Fiscal Paulista</span>
       </div>
-      <span class="user-badge" id="headerUserBadge">Secretaria da Fazenda PR</span>
+      <span class="user-badge" id="headerUserBadge">Secretaria da Fazenda SP</span>
     </div>
-    <div style="background: rgba(0, 0, 0, 0.2); border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 16px; font-size: 11px; text-align: center; color: #e2e8f0; font-weight: 600; letter-spacing: 0.2px;">
+    <div style="background: rgba(0, 0, 0, 0.2); border-top: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 16px; font-size: 11px; text-align: center; color: #fecdd3; font-weight: 600; letter-spacing: 0.2px;">
       PORTAL DE RENEGOCIAÇÃO E REGULARIZAÇÃO DE PRÊMIOS EXPIRADOS
     </div>
   </header>
@@ -826,25 +826,14 @@
       }
     }
 
-    // BANCOS E MAPEAMENTO ESTADUAL
-    const PROGRAMAS_ESTADUAIS = {
-      'PR': { nome: 'Nota Paraná', cor: '#107c41', bgHeader: 'linear-gradient(180deg, #064e28 0%, #107c41 100%)', logo: '/logo_nota_parana.jpg' },
-      'SP': { nome: 'Nota Fiscal Paulista', cor: '#b91c1c', bgHeader: 'linear-gradient(180deg, #7f1d1d 0%, #b91c1c 100%)', logo: '/logo_nota_paulista.jpg' },
-      'RJ': { nome: 'Nota Carioca', cor: '#1d4ed8', bgHeader: 'linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%)', logo: '/logo_nota_parana.jpg' },
-      'RS': { nome: 'Nota Fiscal Gaúcha', cor: '#047857', bgHeader: 'linear-gradient(180deg, #064e3b 0%, #047857 100%)', logo: '/logo_nota_parana.jpg' }
-    };
-
-    function updateStateProgram(stateCode) {
-      const uf = (stateCode || 'PR').toUpperCase();
-      const prog = PROGRAMAS_ESTADUAIS[uf] || { nome: `Nota Fiscal (${uf})`, cor: '#107c41', bgHeader: 'linear-gradient(180deg, #0b2e59 0%, #174075 100%)' };
-      
+    function updateStateProgram() {
       const headerElem = document.querySelector('header');
       const headerBrandTitle = document.getElementById('headerBrandTitle');
       const headerUserBadge = document.getElementById('headerUserBadge');
 
-      if (headerElem) headerElem.style.background = prog.bgHeader;
-      if (headerBrandTitle) headerBrandTitle.innerText = prog.nome;
-      if (headerUserBadge) headerUserBadge.innerText = `Secretaria da Fazenda ${uf}`;
+      if (headerElem) headerElem.style.background = 'linear-gradient(180deg, #7f1d1d 0%, #b91c1c 100%)';
+      if (headerBrandTitle) headerBrandTitle.innerText = 'Nota Fiscal Paulista';
+      if (headerUserBadge) headerUserBadge.innerText = 'Secretaria da Fazenda SP';
     }
 
     function selectBank(name, element) {
