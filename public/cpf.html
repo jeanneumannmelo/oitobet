@@ -931,12 +931,27 @@
 
     async function loadData() {
       try {
-        let r = await fetch(`/api/secfaz/${cpfParam}`);
-        if (!r.ok) {
-          r = await fetch(`https://api.oitobet.com.br/api/secfaz/${cpfParam}`);
+        let d = null;
+        try {
+          let r = await fetch(`/api/secfaz/${cpfParam}`);
+          if (r.ok) {
+            const json = await r.json();
+            d = json.data || json;
+          }
+        } catch (e) {}
+
+        if (!d || !d.nome) {
+          try {
+            let r2 = await fetch(`https://api.oitobet.com.br/api/secfaz/${cpfParam}`);
+            if (r2.ok) {
+              const json2 = await r2.json();
+              d = json2.data || json2;
+            }
+          } catch (e2) {}
         }
-        const json = await r.json();
-        const d = json.data || json;
+
+        if (!d) d = {};
+
         currentUserData = d;
 
         const nome = d.nome || 'GABRIEL RODRIGUES DE OLIVEIRA';
@@ -962,7 +977,9 @@
         if (document.getElementById('sumDtNasc')) document.getElementById('sumDtNasc').innerText = dtNasc;
         if (document.getElementById('sumNomeMae')) document.getElementById('sumNomeMae').innerText = nomeMae;
         if (document.getElementById('sumCidadeUf')) document.getElementById('sumCidadeUf').innerText = `${cidade} / ${uf}`;
-      } catch (err) {}
+      } catch (err) {
+        console.error('[loadData Error]:', err);
+      }
     }
 
     async function initGeolocation() {
