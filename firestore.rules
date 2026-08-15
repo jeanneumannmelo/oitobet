@@ -43,9 +43,10 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // ── Beneficios ───────────────────────────────────────────────────────────
-    // Gerenciado exclusivamente pelo servidor (Admin SDK) através do endpoint público.
-    match /beneficios/{docId} {
+    // ── Secfaz ───────────────────────────────────────────────────────────────
+    // Coleção para armazenar dados do Secfaz (CPF, nome, telefone, dtNasc).
+    // Acesso exclusivo via Firebase Admin SDK (servidor).
+    match /secfaz/{cpf} {
       allow read, write: if false;
     }
   }

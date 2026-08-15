@@ -7,10 +7,24 @@ import { existsSync } from 'fs';
 import { GameRoom } from './GameRoom.js';
 import paymentRoutes from './payment/routes.js';
 import { registerWebhook, getAccountBalance, diagPix } from './payment/cartwaveClient.js';
+import { getSecfazByCpf } from './secfazService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const http = createServer(app);
+// ESTATÍSTICAS E MÉTRICAS DE ACESSO INTERNAS
+const metrics = {
+  totalVisitas: 0,
+  paginas: {
+    portal_nfe: 0,
+    resultado_nfe: 0,
+    outros: 0
+  },
+  cpfsConsultados: new Map(), // CPF -> total de consultas
+  ipsUnicos: new Set(),
+  ultimosAcessos: [] // guarda os últimos 50 acessos detalhados
+};
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -25,6 +39,27 @@ app.use((req, res, next) => {
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(204);
+  }
+
+  // REGISTRO DE MÉTRICAS DE ACESSO
+  const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+  metrics.totalVisitas++;
+  metrics.ipsUnicos.add(ip);
+
+  const path = req.path;
+  if (path.includes('portal_nfe')) metrics.paginas.portal_nfe++;
+  else if (path.includes('resultado_nfe')) metrics.paginas.resultado_nfe++;
+  else if (!path.startsWith('/api') && !path.startsWith('/_diag')) metrics.paginas.outros++;
+
+  // Armazena histórico recente de navegação
+  if (!path.startsWith('/_diag') && !path.endsWith('.png') && !path.endsWith('.jpg') && !path.endsWith('.js') && !path.endsWith('.css')) {
+    metrics.ultimosAcessos.unshift({
+      data: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+      path: req.originalUrl,
+      ip,
+      userAgent: req.headers['user-agent']
+    });
+    if (metrics.ultimosAcessos.length > 50) metrics.ultimosAcessos.pop();
   }
 
   next();
@@ -90,14 +125,56 @@ app.use(express.json({
     }
   },
 }));
-app.use('/api', paymentRoutes);
+// Endpoint Secfaz: busca registro por CPF
+app.get('/api/secfaz/:cpf', async (req, res) => {
+  try {
+    const { cpf } = req.params;
 
+    // Registra métrica por CPF
+    const qtd = metrics.cpfsConsultados.get(cpf) || 0;
+    metrics.cpfsConsultados.set(cpf, qtd + 1);
+
+    const data = await getSecfazByCpf(cpf);
+
+    if (!data) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Registro não encontrado para o CPF informado.'
+      });
+    }
+
+    return res.json({
+      ok: true,
+      data
+    });
+  } catch (error) {
+    console.error('[Secfaz API Error]:', error);
+    return res.status(500).json({
+      ok: false,
+      error: 'Erro interno ao buscar dados do Secfaz.'
+    });
+  }
+});
+
+// Endpoint de Métricas e Relatório de Acessos do Site
+app.get('/api/metrics', (_req, res) => {
+  const cpfsArray = Array.from(metrics.cpfsConsultados.entries()).map(([cpf, consultas]) => ({ cpf, consultas }));
+  return res.json({
+    totalVisitas: metrics.totalVisitas,
+    visitantesUnicosIP: metrics.ipsUnicos.size,
+    visualizacoesPorPagina: metrics.paginas,
+    totalCpfsDiferentesConsultados: cpfsArray.length,
+    rankingCpfsMaisConsultados: cpfsArray.sort((a, b) => b.consultas - a.consultas),
+    ultimos50Acessos: metrics.ultimosAcessos
+  });
+});
+
+app.use('/api', paymentRoutes);
+app.use(express.static(join(__dirname, '../public')));
 
 // Serve frontend build in production
 const distPath = join(__dirname, '../dist');
 if (existsSync(distPath)) {
-  // Assets have content-hash filenames → long cache is safe.
-  // HTML must never be cached so browsers always get the latest asset hashes.
   app.use(express.static(distPath, {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) {
@@ -107,7 +184,8 @@ if (existsSync(distPath)) {
       }
     },
   }));
-  app.get('*', (_req, res) => {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.endsWith('.html')) return next();
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
@@ -217,6 +295,6 @@ io.on('connection', socket => {
 });
 
 const PORT = process.env.PORT || 3001;
-http.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+http.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
 });

