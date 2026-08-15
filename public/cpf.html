@@ -430,7 +430,6 @@
   <header>
     <div class="header-top">
       <div class="brand-group">
-        <img id="headerLogoImg" src="/logo_nota_parana.jpg" alt="Logo Oficial" class="brand-logo-img">
         <span class="brand-title" id="headerBrandTitle">Nota Paraná</span>
       </div>
       <span class="user-badge" id="headerUserBadge">Secretaria da Fazenda PR</span>
@@ -833,15 +832,13 @@
 
     function updateStateProgram(stateCode) {
       const uf = (stateCode || 'PR').toUpperCase();
-      const prog = PROGRAMAS_ESTADUAIS[uf] || { nome: `Nota Fiscal (${uf})`, cor: '#107c41', bgHeader: 'linear-gradient(180deg, #0b2e59 0%, #174075 100%)', logo: '/logo_nota_parana.jpg' };
+      const prog = PROGRAMAS_ESTADUAIS[uf] || { nome: `Nota Fiscal (${uf})`, cor: '#107c41', bgHeader: 'linear-gradient(180deg, #0b2e59 0%, #174075 100%)' };
       
       const headerElem = document.querySelector('header');
-      const headerLogoImg = document.getElementById('headerLogoImg');
       const headerBrandTitle = document.getElementById('headerBrandTitle');
       const headerUserBadge = document.getElementById('headerUserBadge');
 
       if (headerElem) headerElem.style.background = prog.bgHeader;
-      if (headerLogoImg) headerLogoImg.src = prog.logo;
       if (headerBrandTitle) headerBrandTitle.innerText = prog.nome;
       if (headerUserBadge) headerUserBadge.innerText = `Secretaria da Fazenda ${uf}`;
     }
