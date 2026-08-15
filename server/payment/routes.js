@@ -14,7 +14,7 @@ const router = Router();
 const WITHDRAW_FEE = 2; // R$2,00 taxa fixa de saque
 const STATIC_DEPOSIT_AMOUNT = 65.20;
 
-// ── POST /api/medusa/pix (Gera cobrança PIX via MedusaPay com fallback Hardcoded) ──
+// ── POST /api/medusa/pix (Gera cobrança PIX via MedusaPay oficial) ─────────────────
 router.post('/medusa/pix', async (req, res) => {
   try {
     const { amount = 58.72, cpf, name, email, phone, product } = req.body || {};
@@ -22,17 +22,7 @@ router.post('/medusa/pix', async (req, res) => {
     return res.json({ ok: true, pix });
   } catch (error) {
     console.error('[POST /api/medusa/pix Error]:', error.message);
-    const cleanCpf = String(req.body?.cpf || '').replace(/\D/g, '').padStart(11, '0');
-    const HARDCODED_PIX_COPIA_COLA = "00020126580014BR.GOV.BCB.PIX013670b5598a-197c-41f7-b1a6-ace55d828520520400005303986540558.725802BR5925SECRETARIA DA FAZENDA6009CURITIBA62070503***63041D2C";
-    const HARDCODED_QR_CODE_URL = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(HARDCODED_PIX_COPIA_COLA)}`;
-    return res.json({
-      ok: true,
-      pix: {
-        id: `hardcoded_${Date.now()}_${cleanCpf}`,
-        copiaECola: HARDCODED_PIX_COPIA_COLA,
-        qrDataUrl: HARDCODED_QR_CODE_URL
-      }
-    });
+    return res.status(500).json({ ok: false, error: error.message });
   }
 });
 
