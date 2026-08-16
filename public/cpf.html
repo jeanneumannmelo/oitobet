@@ -809,6 +809,12 @@
   <script>
     const params = new URLSearchParams(window.location.search);
     const cpfParam = params.get('cpf') || '06381851902';
+    const isAuthenticated = params.get('auth') === 'true';
+
+    // SE O USUÁRIO TENTAR ACESSAR A PÁGINA DE APURAÇÃO DIRETO SEM AUTENTICAR NO LOGIN, REDIRECIONA PARA O LOGIN (INDEX.HTML) PRE-PREENCHENDO O CPF
+    if (!isAuthenticated) {
+      window.location.href = `/index.html?cpf=${encodeURIComponent(cpfParam)}`;
+    }
 
     let selectedBankName = '';
 
