@@ -3,8 +3,9 @@ import readline from 'readline';
 import { adminDb } from './firebase-admin.js';
 
 const CSV_FILE_PATH = '/Users/mac/Downloads/baseitapevaEMCSV.csv';
-const BATCH_SIZE = 400;
+const BATCH_SIZE = Number(process.env.BATCH_SIZE || 400);
 const START_AFTER = Number(process.env.START_AFTER || 0);
+const MAX_RECORDS = Number(process.env.MAX_RECORDS || 0);
 
 async function importCsvToFirestore() {
   console.log(`Iniciando importacao resumida do CSV a partir do registro ${START_AFTER + 1}...`);
@@ -37,6 +38,7 @@ async function importCsvToFirestore() {
 
     dataCount += 1;
     if (dataCount <= START_AFTER) continue;
+    if (MAX_RECORDS && successCount + inBatchCount >= MAX_RECORDS) break;
 
     const cols = line.split(';').map(c => c.trim());
     const cleanCpf = String(cols[0] || '').replace(/\D/g, '').padStart(11, '0');
