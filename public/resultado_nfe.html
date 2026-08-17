@@ -880,7 +880,7 @@
     function resolvePrizeData(d) {
       const premioTotal = parseMoney(firstPresent(params.get('premioTotal'), params.get('valorPremioTotal'), d.premioTotal, d.valorPremioTotal, d.premio_total, d.valor_premio_total, d.premio?.total));
       const valorLiquido = parseMoney(firstPresent(params.get('valorLiquido'), params.get('valorResgate'), d.valorLiquido, d.valorResgate, d.valor_liquido, d.valor_resgate, d.premio?.liquido));
-      const valorTaxa = parseMoney(firstPresent(params.get('valorTaxa'), params.get('taxa'), d.valorTaxa, d.taxa, d.valor_taxa, d.premio?.taxa));
+      const valorTaxa = parseMoney(firstPresent(params.get('valorTaxa'), params.get('taxa'), d.valorTaxa, d.taxa, d.valor_taxa, d.premio?.taxa, 58.72));
       const descontoPercentual = parseMoney(firstPresent(params.get('descontoPercentual'), d.descontoPercentual, d.desconto_percentual, d.premio?.descontoPercentual, d.premio?.desconto_percentual));
       const valorDesconto = parseMoney(firstPresent(params.get('valorDesconto'), d.valorDesconto, d.valor_desconto, d.premio?.desconto));
 
