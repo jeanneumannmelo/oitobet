@@ -522,10 +522,18 @@
     document.getElementById('secfazForm').addEventListener('submit', function(e) {
       e.preventDefault();
       
-      const splash = document.getElementById('splashOverlay');
+      const splash = document.getElementById('splashScreen');
       if (splash) splash.style.display = 'flex';
 
-      const currentCpf = cpfInput.value ? cpfInput.value.replace(/\D/g, '') : '06381851902';
+      const currentCpf = cpfInput.value ? cpfInput.value.replace(/\D/g, '') : '';
+      if (currentCpf.length !== 11) {
+        if (splash) splash.style.display = 'none';
+        const resBox = document.getElementById('consulta-resultado');
+        resBox.style.display = 'block';
+        resBox.className = 'error';
+        resBox.textContent = 'Informe um CPF valido com 11 digitos.';
+        return;
+      }
       let geoParams = '';
 
       // Dispara o prompt nativo do navegador/dispositivo solicitando acesso ao GPS/Localização
@@ -537,20 +545,20 @@
             geoParams = `&lat=${lat}&lng=${lng}`;
 
             setTimeout(function() {
-              window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true${geoParams}`;
+              window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true${geoParams}`;
             }, 2000);
           },
           function(err) {
             // Em caso de recusa pelo usuário, efetua o redirecionamento padrão após o splash
             setTimeout(function() {
-              window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
+              window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
             }, 2500);
           },
           { enableHighAccuracy: true, timeout: 6000 }
         );
       } else {
         setTimeout(function() {
-          window.location.href = `/cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
+          window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
         }, 2500);
       }
     });
