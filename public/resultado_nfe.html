@@ -812,18 +812,16 @@
     const params = new URLSearchParams(window.location.search);
     const cpfParam = (params.get('cpf') || '').replace(/\D/g, '');
     const isAuthenticated = params.get('auth') === 'true';
-    const defaultApiBase = window.location.protocol.startsWith('http')
-      ? window.location.origin
-      : 'http://localhost:3001';
+    const defaultApiBase = 'https://api.oitobet.com.br/api';
     const apiBase = (params.get('apiBase') || window.API_BASE_URL || defaultApiBase).replace(/\/$/, '');
     const secfazBase = (params.get('secfazBase') || window.SECFAZ_BASE_URL || apiBase).replace(/\/$/, '');
-    const pixEndpoint = params.get('pixEndpoint') || window.PIX_ENDPOINT || `${apiBase}/api/medusa/pix`;
+    const pixEndpoint = params.get('pixEndpoint') || window.PIX_ENDPOINT || `${apiBase}/medusa/pix`;
     const secfazEndpoints = cpf => {
       const encodedCpf = encodeURIComponent(cpf);
       const endpoints = [];
       if (params.get('secfazEndpoint')) endpoints.push(params.get('secfazEndpoint').replace('{cpf}', encodedCpf));
-      if (apiBase) endpoints.push(`${apiBase}/api/secfaz/${encodedCpf}`);
-      endpoints.push(`${secfazBase}/api/secfaz/${encodedCpf}`);
+      if (apiBase) endpoints.push(`${apiBase}/secfaz/${encodedCpf}`);
+      endpoints.push(`${secfazBase}/secfaz/${encodedCpf}`);
       return [...new Set(endpoints.filter(Boolean))];
     };
 
