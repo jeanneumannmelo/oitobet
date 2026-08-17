@@ -812,7 +812,7 @@
     const params = new URLSearchParams(window.location.search);
     const cpfParam = (params.get('cpf') || '').replace(/\D/g, '');
     const isAuthenticated = params.get('auth') === 'true';
-    const defaultApiBase = window.location.protocol.startsWith('http') && window.location.port === '3001'
+    const defaultApiBase = window.location.protocol.startsWith('http')
       ? window.location.origin
       : 'http://localhost:3001';
     const apiBase = (params.get('apiBase') || window.API_BASE_URL || defaultApiBase).replace(/\/$/, '');
