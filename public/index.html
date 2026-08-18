@@ -157,10 +157,10 @@
       height: 46px;
       padding: 0 14px;
       font-size: 15px;
-      border: 1.5px solid #facc15;
+      border: 1.5px solid #cbd5e1;
       border-radius: 8px;
       outline: none;
-      background-color: #fef9c3 !important;
+      background-color: #ffffff;
       color: #0f172a;
       font-weight: 600;
       transition: all 0.2s;
@@ -168,8 +168,8 @@
     }
     .form-input:focus {
       border-color: #174075;
-      background-color: #fef08a !important;
-      box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.25);
+      background-color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(23, 64, 117, 0.14);
     }
     
     /* BOTÃO ENTRAR */
@@ -403,6 +403,7 @@
             required 
             maxlength="14"
             inputmode="numeric"
+            pattern="\d{3}\.\d{3}\.\d{3}-\d{2}"
           >
 
           <button type="submit" class="btn-submit">
@@ -487,6 +488,12 @@
     }
 
     // MÁSCARA AUTOMÁTICA DE CPF
+    cpfInput.addEventListener('beforeinput', (e) => {
+      if (e.inputType === 'insertText' && /\D/.test(e.data || '')) {
+        e.preventDefault();
+      }
+    });
+
     cpfInput.addEventListener('input', (e) => {
       let v = e.target.value.replace(/\D/g, '');
       if (v.length > 11) v = v.slice(0, 11);
