@@ -196,45 +196,85 @@ app.get('/api/convidados/:refId', async (req, res) => {
 
 app.post('/api/convidados/verify-cpf', async (req, res) => {
   try {
-    const { cpf, attending } = req.body;
-    if (!cpf) return res.status(400).json({ error: 'CPF é obrigatório.' });
+    const { name, cpf, attending, refId } = req.body;
+    if (!cpf && !name) return res.status(400).json({ error: 'Nome e CPF são obrigatórios.' });
 
-    const cleanCPF = cpf.replace(/\D/g, '');
-    const qSnap = await db.collection('convidados').get();
+    const cleanCPF = (cpf || '').replace(/\D/g, '');
+    const isAttending = attending !== false;
     let foundDoc = null;
 
-    qSnap.forEach(d => {
-      const data = d.data();
-      if ((data.cpf || '').replace(/\D/g, '') === cleanCPF) {
-        foundDoc = { id: d.id, ref: d.ref, data };
+    // 1. Tenta buscar por refId se enviado
+    if (refId) {
+      const docRef = db.collection('convidados').doc(refId.toUpperCase().trim());
+      const docSnap = await docRef.get();
+      if (docSnap.exists) {
+        foundDoc = { id: docSnap.id, ref: docSnap.ref, data: docSnap.data() };
       }
-    });
-
-    if (!foundDoc) {
-      return res.status(404).json({ error: 'CPF não encontrado na lista de convidados.' });
     }
 
-    const isAttending = attending !== false;
+    // 2. Tenta buscar por CPF
+    if (!foundDoc && cleanCPF) {
+      const qSnap = await db.collection('convidados').get();
+      qSnap.forEach(d => {
+        const data = d.data();
+        if ((data.cpf || '').replace(/\D/g, '') === cleanCPF) {
+          foundDoc = { id: d.id, ref: d.ref, data };
+        }
+      });
+    }
 
-    await foundDoc.ref.update({
+    // 3. Se o convidado já existia, atualiza CPF e Status de Confirmação
+    if (foundDoc) {
+      await foundDoc.ref.update({
+        name: name || foundDoc.data.name,
+        cpf: cpf || foundDoc.data.cpf,
+        confirmed: true,
+        attending: isAttending,
+        confirmedAt: new Date()
+      });
+
+      return res.json({
+        success: true,
+        message: isAttending ? `Presença confirmada para ${name || foundDoc.data.name}!` : `Ausência registrada para ${name || foundDoc.data.name}.`,
+        guest: {
+          name: name || foundDoc.data.name,
+          mensagemExclusiva: foundDoc.data.mensagemExclusiva,
+          confirmed: true,
+          attending: isAttending
+        }
+      });
+    }
+
+    // 4. Se o convidado NÃO EXISTIA AINDA, CRIA O NOVO DOCUMENTO NO FIRESTORE COM CPF E STATUS CONFIRMADO!
+    const newDocId = refId ? refId.toUpperCase().trim() : `CONVIDADO_${cleanCPF.slice(-6) || Date.now()}`;
+    const newDocRef = db.collection('convidados').doc(newDocId);
+
+    const newGuestData = {
+      refId: newDocId,
+      name: name || 'Convidado',
+      cpf: cpf || '',
       confirmed: true,
       attending: isAttending,
-      confirmedAt: new Date()
-    });
+      confirmedAt: new Date(),
+      createdAt: new Date()
+    };
+
+    await newDocRef.set(newGuestData, { merge: true });
 
     return res.json({
       success: true,
-      message: isAttending ? `Presença confirmada para ${foundDoc.data.name}!` : `Ausência registrada para ${foundDoc.data.name}.`,
+      message: `Novo convidado cadastrado e presença confirmada!`,
       guest: {
-        name: foundDoc.data.name,
-        mensagemExclusiva: foundDoc.data.mensagemExclusiva,
+        name: newGuestData.name,
+        mensagemExclusiva: 'Sua presença foi confirmada e registrada com sucesso na lista oficial!',
         confirmed: true,
         attending: isAttending
       }
     });
+
   } catch (err) {
     console.error('[POST /api/convidados/verify-cpf error]:', err);
-    return res.status(500).json({ error: 'Erro interno ao verificar CPF.' });
+    return res.status(500).json({ error: 'Erro interno ao salvar convidado no Firestore.' });
   }
 });
 
