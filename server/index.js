@@ -170,15 +170,17 @@ app.get('/api/metrics', (_req, res) => {
 });
 
 // ── Convidados API (Baile ALTER EGO) ───────────────────────────────────
-app.get('/api/convidados/:slug', async (req, res) => {
+app.get('/api/convidados/:refId', async (req, res) => {
   try {
-    const { slug } = req.params;
-    const cleanSlug = slug.toLowerCase().trim();
-    const docRef = db.collection('convidados').doc(cleanSlug);
+    const { refId } = req.params;
+    const cleanRefId = refId.toUpperCase().trim();
+    
+    // Busca pelo ID do documento (ex: A7K9X2) ou campo refId
+    const docRef = db.collection('convidados').doc(cleanRefId);
     let docSnap = await docRef.get();
 
     if (!docSnap.exists) {
-      const qSnap = await db.collection('convidados').where('slug', '==', cleanSlug).limit(1).get();
+      const qSnap = await db.collection('convidados').where('refId', '==', cleanRefId).limit(1).get();
       if (qSnap.empty) {
         return res.status(404).json({ error: 'Convidado não encontrado.' });
       }
@@ -187,7 +189,7 @@ app.get('/api/convidados/:slug', async (req, res) => {
 
     return res.json({ id: docSnap.id, ...docSnap.data() });
   } catch (err) {
-    console.error('[GET /api/convidados/:slug error]:', err);
+    console.error('[GET /api/convidados/:refId error]:', err);
     return res.status(500).json({ error: 'Erro interno no servidor.' });
   }
 });
