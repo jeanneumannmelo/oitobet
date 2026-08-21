@@ -196,7 +196,7 @@ app.get('/api/convidados/:refId', async (req, res) => {
 
 app.post('/api/convidados/verify-cpf', async (req, res) => {
   try {
-    const { cpf } = req.body;
+    const { cpf, attending } = req.body;
     if (!cpf) return res.status(400).json({ error: 'CPF é obrigatório.' });
 
     const cleanCPF = cpf.replace(/\D/g, '');
@@ -214,18 +214,22 @@ app.post('/api/convidados/verify-cpf', async (req, res) => {
       return res.status(404).json({ error: 'CPF não encontrado na lista de convidados.' });
     }
 
+    const isAttending = attending !== false;
+
     await foundDoc.ref.update({
       confirmed: true,
+      attending: isAttending,
       confirmedAt: new Date()
     });
 
     return res.json({
       success: true,
-      message: `Presença confirmada para ${foundDoc.data.name}!`,
+      message: isAttending ? `Presença confirmada para ${foundDoc.data.name}!` : `Ausência registrada para ${foundDoc.data.name}.`,
       guest: {
         name: foundDoc.data.name,
         mensagemExclusiva: foundDoc.data.mensagemExclusiva,
-        confirmed: true
+        confirmed: true,
+        attending: isAttending
       }
     });
   } catch (err) {
