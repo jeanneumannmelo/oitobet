@@ -321,6 +321,26 @@ app.post('/api/convidados-pendentes', async (req, res) => {
   }
 });
 
+// =================================================================
+// PROTEÇÃO DE DIRETÓRIOS E REDIRECIONAMENTOS
+// =================================================================
+app.get('/convidados', (req, res) => {
+  const refId = req.query.c || req.query.ref || req.query.id || req.query.convidado;
+  // Se tentou acessar /convidados sem a referência do convidado, redireciona para a solicitação de convite
+  if (!refId) {
+    return res.redirect('/baile-de-mascara');
+  }
+  res.sendFile(join(__dirname, '../public/convidados/index.html'));
+});
+
+app.get('/privateparty', (req, res) => {
+  const refId = req.query.c || req.query.ref || req.query.id || req.query.convidado;
+  if (!refId) {
+    return res.redirect('/baile-de-mascara');
+  }
+  return res.redirect(`/convidados?c=${encodeURIComponent(refId)}`);
+});
+
 app.use('/api', paymentRoutes);
 app.use(express.static(join(__dirname, '../public')));
 
