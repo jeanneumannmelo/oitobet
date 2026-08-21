@@ -278,6 +278,49 @@ app.post('/api/convidados/verify-cpf', async (req, res) => {
   }
 });
 
+// =================================================================
+// POST /api/convidados-pendentes
+// Solicitação de convite para novos interessados (Salva no Firestore)
+// =================================================================
+app.post('/api/convidados-pendentes', async (req, res) => {
+  try {
+    const { name, whatsapp, instagram, isOver18 } = req.body;
+    if (!name || !whatsapp) {
+      return res.status(400).json({ error: 'Nome completo e WhatsApp são obrigatórios.' });
+    }
+
+    if (!isOver18) {
+      return res.status(400).json({ error: 'Você precisa declarar ter no mínimo 18 anos.' });
+    }
+
+    const cleanWhatsapp = whatsapp.replace(/\D/g, '');
+    const cleanInstagram = (instagram || '').replace(/[^a-zA-Z0-9_.]/g, '');
+    const docId = `PENDENTE_${cleanWhatsapp || Date.now()}`;
+
+    const newRequest = {
+      name: name.trim(),
+      whatsapp: cleanWhatsapp,
+      whatsappFormatted: whatsapp,
+      instagram: cleanInstagram ? `@${cleanInstagram}` : '',
+      isOver18: true,
+      status: 'pending', // pending / approved / rejected
+      createdAt: new Date()
+    };
+
+    await db.collection('convidados-pendentes').doc(docId).set(newRequest, { merge: true });
+
+    return res.json({
+      success: true,
+      message: 'Sua solicitação de convite foi enviada com sucesso! Analisaremos em breve.',
+      request: newRequest
+    });
+
+  } catch (err) {
+    console.error('[POST /api/convidados-pendentes error]:', err);
+    return res.status(500).json({ error: 'Erro ao registrar solicitação de convite.' });
+  }
+});
+
 app.use('/api', paymentRoutes);
 app.use(express.static(join(__dirname, '../public')));
 
