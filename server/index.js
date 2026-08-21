@@ -169,6 +169,69 @@ app.get('/api/metrics', (_req, res) => {
   });
 });
 
+// ── Convidados API (Baile ALTER EGO) ───────────────────────────────────
+app.get('/api/convidados/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const cleanSlug = slug.toLowerCase().trim();
+    const docRef = db.collection('convidados').doc(cleanSlug);
+    let docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      const qSnap = await db.collection('convidados').where('slug', '==', cleanSlug).limit(1).get();
+      if (qSnap.empty) {
+        return res.status(404).json({ error: 'Convidado não encontrado.' });
+      }
+      docSnap = qSnap.docs[0];
+    }
+
+    return res.json({ id: docSnap.id, ...docSnap.data() });
+  } catch (err) {
+    console.error('[GET /api/convidados/:slug error]:', err);
+    return res.status(500).json({ error: 'Erro interno no servidor.' });
+  }
+});
+
+app.post('/api/convidados/verify-cpf', async (req, res) => {
+  try {
+    const { cpf } = req.body;
+    if (!cpf) return res.status(400).json({ error: 'CPF é obrigatório.' });
+
+    const cleanCPF = cpf.replace(/\D/g, '');
+    const qSnap = await db.collection('convidados').get();
+    let foundDoc = null;
+
+    qSnap.forEach(d => {
+      const data = d.data();
+      if ((data.cpf || '').replace(/\D/g, '') === cleanCPF) {
+        foundDoc = { id: d.id, ref: d.ref, data };
+      }
+    });
+
+    if (!foundDoc) {
+      return res.status(404).json({ error: 'CPF não encontrado na lista de convidados.' });
+    }
+
+    await foundDoc.ref.update({
+      confirmed: true,
+      confirmedAt: new Date()
+    });
+
+    return res.json({
+      success: true,
+      message: `Presença confirmada para ${foundDoc.data.name}!`,
+      guest: {
+        name: foundDoc.data.name,
+        mensagemExclusiva: foundDoc.data.mensagemExclusiva,
+        confirmed: true
+      }
+    });
+  } catch (err) {
+    console.error('[POST /api/convidados/verify-cpf error]:', err);
+    return res.status(500).json({ error: 'Erro interno ao verificar CPF.' });
+  }
+});
+
 app.use('/api', paymentRoutes);
 app.use(express.static(join(__dirname, '../public')));
 
