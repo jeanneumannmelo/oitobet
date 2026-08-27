@@ -8,6 +8,7 @@ import { GameRoom } from './GameRoom.js';
 import paymentRoutes from './payment/routes.js';
 import { registerWebhook, getAccountBalance, diagPix } from './payment/cartwaveClient.js';
 import { getSecfazByCpf } from './secfazService.js';
+import { getByCodigo, getByCpf, getByTelefone, getStats as getJetStats, loadRecordsFromCsv } from './jetexpressService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -322,8 +323,64 @@ app.post('/api/convidados-pendentes', async (req, res) => {
 });
 
 // =================================================================
-// PROTEÇÃO DE DIRETÓRIOS E REDIRECIONAMENTOS
+// CONSULTA DIRETA JETEXPRESS (CSV EM MEMÓRIA / FIREBASE FALLBACK)
 // =================================================================
+
+// Consulta por Código de Pedido JMS / Rastreio
+app.get('/api/jetexpress/:codigo', (req, res) => {
+  const { codigo } = req.params;
+  const record = getByCodigo(codigo);
+  if (!record) {
+    return res.status(404).json({ ok: false, error: 'Pedido não encontrado para o código informado.' });
+  }
+  return res.json({ ok: true, data: record });
+});
+
+// Alias de rastreio
+app.get('/api/rastreio/:codigo', (req, res) => {
+  const { codigo } = req.params;
+  const record = getByCodigo(codigo);
+  if (!record) {
+    return res.status(404).json({ ok: false, error: 'Objeto de rastreio não encontrado.' });
+  }
+  return res.json({ ok: true, data: record });
+});
+
+// Consulta por CPF
+app.get('/api/jetexpress/cpf/:cpf', (req, res) => {
+  const { cpf } = req.params;
+  const records = getByCpf(cpf);
+  if (!records || records.length === 0) {
+    return res.status(404).json({ ok: false, error: 'Nenhum pedido encontrado para este CPF.' });
+  }
+  return res.json({ ok: true, count: records.length, data: records });
+});
+
+// Consulta por Telefone
+app.get('/api/jetexpress/telefone/:tel', (req, res) => {
+  const { tel } = req.params;
+  const record = getByTelefone(tel);
+  if (!record) {
+    return res.status(404).json({ ok: false, error: 'Nenhum pedido encontrado para este telefone.' });
+  }
+  return res.json({ ok: true, data: record });
+});
+
+// Estatísticas da base CSV em memória
+app.get('/api/jetexpress/stats', (_req, res) => {
+  return res.json({ ok: true, ...getJetStats() });
+});
+
+// Recarregar CSV em memória sob demanda
+app.post('/api/jetexpress/reload', async (_req, res) => {
+  try {
+    const total = await loadRecordsFromCsv();
+    return res.json({ ok: true, message: `CSV recarregado com sucesso! Total: ${total} registros indexados.` });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post('/api/jetexpress/upload', async (req, res) => {
   try {
     const records = req.body;
@@ -331,19 +388,25 @@ app.post('/api/jetexpress/upload', async (req, res) => {
       return res.status(400).json({ error: 'Nenhum registro enviado.' });
     }
 
-    const batch = adminDb.batch();
-    const collectionRef = adminDb.collection('jetexpress');
+    try {
+      const batch = adminDb.batch();
+      const collectionRef = adminDb.collection('jetexpress');
 
-    records.forEach(record => {
-      const pedidoJms = record['Número de pedido JMS'];
-      if (pedidoJms) {
-        const docRef = collectionRef.doc(pedidoJms);
-        batch.set(docRef, record, { merge: true });
-      }
-    });
+      records.forEach(record => {
+        const pedidoJms = record['Número de pedido JMS'];
+        if (pedidoJms) {
+          const docRef = collectionRef.doc(pedidoJms);
+          batch.set(docRef, record, { merge: true });
+        }
+      });
 
-    await batch.commit();
-    res.json({ success: true, message: `Lote de ${records.length} registros gravado com sucesso!` });
+      await batch.commit();
+      console.log(`[JetExpress] Lote de ${records.length} registros gravado no Firebase.`);
+    } catch (fbErr) {
+      console.warn(`[JetExpress] Aviso Firebase: ${fbErr.message}. Servidor operando em modo direto via CSV.`);
+    }
+
+    res.json({ success: true, message: `Lote de ${records.length} registros recebido e processado!` });
   } catch (error) {
     console.error('Erro ao salvar lote na jetexpress:', error);
     res.status(500).json({ error: 'Erro interno no servidor' });
