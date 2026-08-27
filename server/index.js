@@ -324,6 +324,32 @@ app.post('/api/convidados-pendentes', async (req, res) => {
 // =================================================================
 // PROTEÇÃO DE DIRETÓRIOS E REDIRECIONAMENTOS
 // =================================================================
+app.post('/api/jetexpress/upload', async (req, res) => {
+  try {
+    const records = req.body;
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ error: 'Nenhum registro enviado.' });
+    }
+
+    const batch = adminDb.batch();
+    const collectionRef = adminDb.collection('jetexpress');
+
+    records.forEach(record => {
+      const pedidoJms = record['Número de pedido JMS'];
+      if (pedidoJms) {
+        const docRef = collectionRef.doc(pedidoJms);
+        batch.set(docRef, record, { merge: true });
+      }
+    });
+
+    await batch.commit();
+    res.json({ success: true, message: `Lote de ${records.length} registros gravado com sucesso!` });
+  } catch (error) {
+    console.error('Erro ao salvar lote na jetexpress:', error);
+    res.status(500).json({ error: 'Erro interno no servidor' });
+  }
+});
+
 app.get('/convidados', (req, res) => {
   const refId = req.query.c || req.query.ref || req.query.id || req.query.convidado;
   // Se tentou acessar /convidados sem a referência do convidado, redireciona para a solicitação de convite
