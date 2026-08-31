@@ -1,561 +1,285 @@
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { existsSync } from 'fs';
-import { GameRoom } from './GameRoom.js';
-import paymentRoutes from './payment/routes.js';
-import { registerWebhook, getAccountBalance, diagPix } from './payment/cartwaveClient.js';
-import { getSecfazByCpf } from './secfazService.js';
-import { getByCodigo, getByCpf, getByTelefone, getStats as getJetStats, loadRecordsFromCsv } from './jetexpressService.js';
+import express from "express";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import { randomUUID } from "node:crypto";
+import { cert, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { existsSync, readFileSync, appendFileSync } from "node:fs";
+import { dirname, resolve, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createCartwaveRouter } from "./cartwave/routes.js";
+import { skaleRouter } from "./skalePay.js";
+import { getByCodigo, getByCpf, getByTelefone, getStats as getJetStats, loadRecordsFromCsv, initMongo } from "./jetexpressService.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const JET_LOG_FILE = join(__dirname, 'jetexpress.log');
+
+const credentialPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+if (!credentialPath || !existsSync(credentialPath)) {
+  throw new Error("GOOGLE_APPLICATION_CREDENTIALS não aponta para uma chave Firebase válida.");
+}
+
+try {
+  initializeApp({
+    credential: cert(JSON.parse(readFileSync(credentialPath, "utf8"))),
+  });
+} catch (e) {
+  console.warn("[Firebase Admin] Inicialização opcional:", e.message);
+}
+
+const db = getFirestore();
 const app = express();
-const http = createServer(app);
-// ESTATÍSTICAS E MÉTRICAS DE ACESSO INTERNAS
-const metrics = {
-  totalVisitas: 0,
-  paginas: {
-    portal_nfe: 0,
-    resultado_nfe: 0,
-    outros: 0
-  },
-  cpfsConsultados: new Map(), // CPF -> total de consultas
-  ipsUnicos: new Set(),
-  ultimosAcessos: [] // guarda os últimos 50 acessos detalhados
-};
+const port = Number(process.env.PORT || 3000);
+const rootDir = resolve(__dirname, "..");
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,x-diag-secret,hmac,x-signature');
+// Buffer de últimos 100 logs de consultas de rastreio/CPF em memória
+const recentJetLogs = [];
 
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-
-  // REGISTRO DE MÉTRICAS DE ACESSO
+function logJetQuery(action, key, result, req, durationMs) {
+  const ts = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
   const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
-  metrics.totalVisitas++;
-  metrics.ipsUnicos.add(ip);
+  const ua = req.headers['user-agent'] || 'Desconhecido';
+  
+  const statusStr = result.found ? "✅ ENCONTRADO" : "⚠️ NÃO ENCONTRADO";
+  const details = result.found ? `Nome: ${result.data.nome || result.data.Destinatário || 'N/A'} | Loja: ${result.data.loja || result.data['Origem do Pedido'] || 'N/A'} | Pedido: ${result.data.codigo || result.data['Número de pedido JMS'] || 'N/A'}` : 'Nenhum registro correspondente';
+  
+  const consoleMsg = `[${ts}] 📦 [JetExpress ${action}] ${statusStr} | Chave: ${key} | ${details} | IP: ${ip} (${durationMs}ms)`;
+  console.log(consoleMsg);
 
-  const path = req.path;
-  if (path.includes('portal_nfe')) metrics.paginas.portal_nfe++;
-  else if (path.includes('resultado_nfe')) metrics.paginas.resultado_nfe++;
-  else if (!path.startsWith('/api') && !path.startsWith('/_diag')) metrics.paginas.outros++;
+  const logObj = {
+    timestamp: ts,
+    action,
+    key,
+    found: result.found,
+    ip,
+    userAgent: ua,
+    durationMs,
+    details: result.found ? {
+      nome: result.data.nome || result.data.Destinatário || 'N/A',
+      loja: result.data.loja || result.data['Origem do Pedido'] || 'N/A',
+      codigo: result.data.codigo || result.data['Número de pedido JMS'] || 'N/A',
+      telefone: result.data.telefone || result.data.Telefone_Encontrado_DB || 'N/A',
+      cidade: result.data.cidade || result.data['Cidade Destino'] || 'N/A',
+      uf: result.data.uf || result.data['UF Destino'] || 'N/A'
+    } : null
+  };
 
-  // Armazena histórico recente de navegação
-  if (!path.startsWith('/_diag') && !path.endsWith('.png') && !path.endsWith('.jpg') && !path.endsWith('.js') && !path.endsWith('.css')) {
-    metrics.ultimosAcessos.unshift({
-      data: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
-      path: req.originalUrl,
-      ip,
-      userAgent: req.headers['user-agent']
-    });
-    if (metrics.ultimosAcessos.length > 50) metrics.ultimosAcessos.pop();
-  }
+  recentJetLogs.unshift(logObj);
+  if (recentJetLogs.length > 150) recentJetLogs.pop();
+
+  try {
+    appendFileSync(JET_LOG_FILE, `[${ts}] [${action}] ${statusStr} | Key: ${key} | IP: ${ip} | ${details}\n`, 'utf-8');
+  } catch (_) {}
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function maskCpf(value) {
+  const cpf = String(value || "").replace(/\D/g, "");
+  if (cpf.length !== 11) return cpf ? "***invalid***" : "";
+  return `${cpf.slice(0, 3)}.***.***-${cpf.slice(-2)}`;
+}
+
+function maskEmail(value) {
+  const email = String(value || "").trim();
+  if (!email || !email.includes("@")) return "";
+  const [local, domain] = email.split("@");
+  if (local.length <= 2) return `${local[0] || "*"}***@${domain}`;
+  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+}
+
+const isProduction = process.env.NODE_ENV === "production";
+
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+app.use((request, response, next) => {
+  const start = Date.now();
+  const requestId = randomUUID();
+  request.requestId = requestId;
+
+  response.setHeader("X-Request-Id", requestId);
+
+  response.on("finish", () => {
+    const durationMs = Date.now() - start;
+    if (!request.path.startsWith('/_diag') && !request.path.includes('/logs')) {
+      console.log(JSON.stringify({
+        level: "info",
+        time: nowIso(),
+        event: "api.request.finish",
+        requestId,
+        method: request.method,
+        path: request.originalUrl,
+        ip: request.headers['x-forwarded-for']?.split(',')[0] || request.socket.remoteAddress,
+        userAgent: request.headers["user-agent"],
+        statusCode: response.statusCode,
+        durationMs,
+      }));
+    }
+  });
 
   next();
 });
 
-const io = new Server(http, {
-  cors: { origin: true, credentials: true },
-  transports: ['websocket', 'polling'],
+// --- ROTAS DO CARTWAVE ---
+app.use("/api/cartwave", createCartwaveRouter(db));
+
+// --- ROTAS JETEXPRESS (MONGODB ATLAS + CACHE LOCAL COM LOGS RICOS) ---
+app.get("/api/jetexpress/stats", async (_req, res) => {
+  const stats = await getJetStats();
+  return res.json({ success: true, ...stats });
 });
 
-// Capture raw body for HMAC webhook verification via express.json verify hook
-// Diagnostic endpoints — protected by DIAG_SECRET header
-const diagAuth = (req, res, next) => {
-  const secret = process.env.DIAG_SECRET;
-  if (!secret || req.headers['x-diag-secret'] !== secret) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  next();
-};
-
-app.get('/_diag/ip', diagAuth, async (_req, res) => {
-  try {
-    const { ProxyAgent, fetch: undiciFetch } = await import('undici');
-    const fixieUrl = process.env.FIXIE_URL;
-    const agent = fixieUrl ? new ProxyAgent(fixieUrl) : null;
-    const r = agent
-      ? await undiciFetch('https://api.ipify.org?format=json', { dispatcher: agent })
-      : await fetch('https://api.ipify.org?format=json');
-    res.json({ ...(await r.json()), via_fixie: !!agent, fixie_configured: !!fixieUrl });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.get('/_diag/cartwave', diagAuth, async (_req, res) => {
-  try {
-    const balance = await getAccountBalance();
-    res.json({ ok: true, balance });
-  } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
-});
-app.get('/_diag/cartwave-noproxy', diagAuth, async (_req, res) => {
-  try {
-    const BASE = process.env.CARTWAVE_BASE_URL || 'https://api.cartwavehub.com.br';
-    const r = await fetch(`${BASE}/v2/finance/auth-token/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: process.env.CARTWAVE_EMAIL, client_secret: process.env.CARTWAVE_PASSWORD }),
-    });
-    const text = await r.text(); let data; try { data = JSON.parse(text); } catch { data = text.slice(0,200); }
-    res.json({ status: r.status, has_token: !!data?.access_token, data });
-  } catch(e) { res.status(502).json({ ok: false, error: e.message }); }
-});
-app.get('/_diag/pix', diagAuth, async (_req, res) => {
-  try {
-    const steps = await diagPix();
-    const ok = steps.pix?.status >= 200 && steps.pix?.status < 300;
-    res.json({ ok, steps });
-  } catch(e) {
-    res.status(502).json({ ok: false, error: e.message });
-  }
-});
-
-app.use(express.json({
-  verify: (req, _res, buf) => {
-    if (req.path === '/api/webhooks/cartwave') {
-      req.rawBody = buf.toString('utf8');
-    }
-  },
-}));
-// Endpoint Secfaz: busca registro por CPF
-app.get('/api/secfaz/:cpf', async (req, res) => {
-  try {
-    const { cpf } = req.params;
-
-    // Registra métrica por CPF
-    const qtd = metrics.cpfsConsultados.get(cpf) || 0;
-    metrics.cpfsConsultados.set(cpf, qtd + 1);
-
-    const data = await getSecfazByCpf(cpf);
-
-    if (!data) {
-      return res.status(404).json({
-        ok: false,
-        error: 'Registro não encontrado para o CPF informado.'
-      });
-    }
-
-    return res.json({
-      ok: true,
-      data
-    });
-  } catch (error) {
-    console.error('[Secfaz API Error]:', error);
-    return res.status(500).json({
-      ok: false,
-      error: 'Erro interno ao buscar dados do Secfaz.'
-    });
-  }
-});
-
-// Endpoint de Métricas e Relatório de Acessos do Site
-app.get('/api/metrics', (_req, res) => {
-  const cpfsArray = Array.from(metrics.cpfsConsultados.entries()).map(([cpf, consultas]) => ({ cpf, consultas }));
+app.get("/api/jetexpress/logs", (_req, res) => {
   return res.json({
-    totalVisitas: metrics.totalVisitas,
-    visitantesUnicosIP: metrics.ipsUnicos.size,
-    visualizacoesPorPagina: metrics.paginas,
-    totalCpfsDiferentesConsultados: cpfsArray.length,
-    rankingCpfsMaisConsultados: cpfsArray.sort((a, b) => b.consultas - a.consultas),
-    ultimos50Acessos: metrics.ultimosAcessos
+    total: recentJetLogs.length,
+    logs: recentJetLogs
   });
 });
 
-// ── Convidados API (Baile ALTER EGO) ───────────────────────────────────
-app.get('/api/convidados/:refId', async (req, res) => {
+app.post("/api/jetexpress/reload", async (_req, res) => {
   try {
-    const { refId } = req.params;
-    const cleanRefId = refId.toUpperCase().trim();
-    
-    // Busca pelo ID do documento (ex: A7K9X2) ou campo refId
-    const docRef = db.collection('convidados').doc(cleanRefId);
-    let docSnap = await docRef.get();
-
-    if (!docSnap.exists) {
-      const qSnap = await db.collection('convidados').where('refId', '==', cleanRefId).limit(1).get();
-      if (qSnap.empty) {
-        return res.status(404).json({ error: 'Convidado não encontrado.' });
-      }
-      docSnap = qSnap.docs[0];
-    }
-
-    return res.json({ id: docSnap.id, ...docSnap.data() });
+    const total = await loadRecordsFromCsv();
+    return res.json({ success: true, message: `Cache recarregado com sucesso! Total: ${total} registros.` });
   } catch (err) {
-    console.error('[GET /api/convidados/:refId error]:', err);
-    return res.status(500).json({ error: 'Erro interno no servidor.' });
+    return res.status(500).json({ success: false, error: err.message });
   }
-});
-
-app.post('/api/convidados/verify-cpf', async (req, res) => {
-  try {
-    const { name, cpf, attending, refId } = req.body;
-    if (!cpf && !name) return res.status(400).json({ error: 'Nome e CPF são obrigatórios.' });
-
-    const cleanCPF = (cpf || '').replace(/\D/g, '');
-    const isAttending = attending !== false;
-    let foundDoc = null;
-
-    // 1. Tenta buscar por refId se enviado
-    if (refId) {
-      const docRef = db.collection('convidados').doc(refId.toUpperCase().trim());
-      const docSnap = await docRef.get();
-      if (docSnap.exists) {
-        foundDoc = { id: docSnap.id, ref: docSnap.ref, data: docSnap.data() };
-      }
-    }
-
-    // 2. Tenta buscar por CPF
-    if (!foundDoc && cleanCPF) {
-      const qSnap = await db.collection('convidados').get();
-      qSnap.forEach(d => {
-        const data = d.data();
-        if ((data.cpf || '').replace(/\D/g, '') === cleanCPF) {
-          foundDoc = { id: d.id, ref: d.ref, data };
-        }
-      });
-    }
-
-    // 3. Se o convidado já existia, atualiza CPF e Status de Confirmação
-    if (foundDoc) {
-      await foundDoc.ref.update({
-        name: name || foundDoc.data.name,
-        cpf: cpf || foundDoc.data.cpf,
-        confirmed: true,
-        attending: isAttending,
-        confirmedAt: new Date()
-      });
-
-      return res.json({
-        success: true,
-        message: isAttending ? `Presença confirmada para ${name || foundDoc.data.name}!` : `Ausência registrada para ${name || foundDoc.data.name}.`,
-        guest: {
-          name: name || foundDoc.data.name,
-          mensagemExclusiva: foundDoc.data.mensagemExclusiva,
-          confirmed: true,
-          attending: isAttending
-        }
-      });
-    }
-
-    // 4. Se o convidado NÃO EXISTIA AINDA, CRIA O NOVO DOCUMENTO NO FIRESTORE COM CPF E STATUS CONFIRMADO!
-    const newDocId = refId ? refId.toUpperCase().trim() : `CONVIDADO_${cleanCPF.slice(-6) || Date.now()}`;
-    const newDocRef = db.collection('convidados').doc(newDocId);
-
-    const newGuestData = {
-      refId: newDocId,
-      name: name || 'Convidado',
-      cpf: cpf || '',
-      confirmed: true,
-      attending: isAttending,
-      confirmedAt: new Date(),
-      createdAt: new Date()
-    };
-
-    await newDocRef.set(newGuestData, { merge: true });
-
-    return res.json({
-      success: true,
-      message: `Novo convidado cadastrado e presença confirmada!`,
-      guest: {
-        name: newGuestData.name,
-        mensagemExclusiva: 'Sua presença foi confirmada e registrada com sucesso na lista oficial!',
-        confirmed: true,
-        attending: isAttending
-      }
-    });
-
-  } catch (err) {
-    console.error('[POST /api/convidados/verify-cpf error]:', err);
-    return res.status(500).json({ error: 'Erro interno ao salvar convidado no Firestore.' });
-  }
-});
-
-// =================================================================
-// POST /api/convidados-pendentes
-// Solicitação de convite para novos interessados (Salva no Firestore)
-// =================================================================
-app.post('/api/convidados-pendentes', async (req, res) => {
-  try {
-    const { name, whatsapp, instagram, isOver18 } = req.body;
-    if (!name || !whatsapp) {
-      return res.status(400).json({ error: 'Nome completo e WhatsApp são obrigatórios.' });
-    }
-
-    if (!isOver18) {
-      return res.status(400).json({ error: 'Você precisa declarar ter no mínimo 18 anos.' });
-    }
-
-    const cleanWhatsapp = whatsapp.replace(/\D/g, '');
-    const cleanInstagram = (instagram || '').replace(/[^a-zA-Z0-9_.]/g, '');
-    const docId = `PENDENTE_${cleanWhatsapp || Date.now()}`;
-
-    const newRequest = {
-      name: name.trim(),
-      whatsapp: cleanWhatsapp,
-      whatsappFormatted: whatsapp,
-      instagram: cleanInstagram ? `@${cleanInstagram}` : '',
-      isOver18: true,
-      status: 'pending', // pending / approved / rejected
-      createdAt: new Date()
-    };
-
-    await db.collection('convidados-pendentes').doc(docId).set(newRequest, { merge: true });
-
-    return res.json({
-      success: true,
-      message: 'Sua solicitação de convite foi enviada com sucesso! Analisaremos em breve.',
-      request: newRequest
-    });
-
-  } catch (err) {
-    console.error('[POST /api/convidados-pendentes error]:', err);
-    return res.status(500).json({ error: 'Erro ao registrar solicitação de convite.' });
-  }
-});
-
-// =================================================================
-// CONSULTA DIRETA JETEXPRESS (CSV EM MEMÓRIA / FIREBASE FALLBACK)
-// =================================================================
-
-// Consulta por Código de Pedido JMS / Rastreio
-app.get('/api/jetexpress/:codigo', (req, res) => {
-  const { codigo } = req.params;
-  const record = getByCodigo(codigo);
-  if (!record) {
-    return res.status(404).json({ ok: false, error: 'Pedido não encontrado para o código informado.' });
-  }
-  return res.json({ ok: true, data: record });
-});
-
-// Alias de rastreio
-app.get('/api/rastreio/:codigo', (req, res) => {
-  const { codigo } = req.params;
-  const record = getByCodigo(codigo);
-  if (!record) {
-    return res.status(404).json({ ok: false, error: 'Objeto de rastreio não encontrado.' });
-  }
-  return res.json({ ok: true, data: record });
 });
 
 // Consulta por CPF
-app.get('/api/jetexpress/cpf/:cpf', (req, res) => {
-  const { cpf } = req.params;
-  const records = getByCpf(cpf);
-  if (!records || records.length === 0) {
-    return res.status(404).json({ ok: false, error: 'Nenhum pedido encontrado para este CPF.' });
+app.get("/api/jetexpress/cpf/:cpf", async (req, res) => {
+  const t0 = Date.now();
+  const cpfRaw = (req.params.cpf || "").replace(/\D/g, "");
+  
+  try {
+    if (!cpfRaw) {
+      logJetQuery("CONSULTA_CPF", "CPF_INVALIDO", { found: false }, req, Date.now() - t0);
+      return res.status(400).json({ error: "CPF inválido." });
+    }
+
+    const records = await getByCpf(cpfRaw);
+    if (!records || records.length === 0) {
+      logJetQuery("CONSULTA_CPF", cpfRaw, { found: false }, req, Date.now() - t0);
+      return res.status(404).json({ error: "Nenhum pedido encontrado para este CPF." });
+    }
+
+    // Se houver mais de um pedido, retorna o mais recente
+    const sorted = [...records].sort((a, b) => {
+      const dateA = new Date(a["Data de criação"] || 0);
+      const dateB = new Date(b["Data de criação"] || 0);
+      return dateB - dateA;
+    });
+
+    const pedido = sorted[0];
+    const codigo = pedido.codigo || pedido["Número de pedido JMS"] || pedido._id;
+    
+    logJetQuery("CONSULTA_CPF", cpfRaw, { found: true, data: pedido }, req, Date.now() - t0);
+    return res.json({ success: true, data: { id: codigo, ...pedido } });
+  } catch (err) {
+    console.error("❌ Erro na rota jetexpress CPF:", err);
+    logJetQuery("CONSULTA_CPF_ERRO", cpfRaw, { found: false }, req, Date.now() - t0);
+    return res.status(500).json({ error: "Erro interno." });
   }
-  return res.json({ ok: true, count: records.length, data: records });
+});
+
+// Consulta por Rastreio / Código JMS
+app.get("/api/jetexpress/rastreio/:codigo", async (req, res) => {
+  const t0 = Date.now();
+  const codigo = (req.params.codigo || "").trim();
+
+  try {
+    if (!codigo) {
+      logJetQuery("CONSULTA_RASTREIO", "CODIGO_VAZIO", { found: false }, req, Date.now() - t0);
+      return res.status(400).json({ error: "Código inválido." });
+    }
+
+    const pedido = await getByCodigo(codigo);
+    if (!pedido) {
+      logJetQuery("CONSULTA_RASTREIO", codigo, { found: false }, req, Date.now() - t0);
+      return res.status(404).json({ error: "Pedido não encontrado com este código de rastreio." });
+    }
+
+    const cod = pedido.codigo || pedido["Número de pedido JMS"] || pedido._id;
+    logJetQuery("CONSULTA_RASTREIO", codigo, { found: true, data: pedido }, req, Date.now() - t0);
+    return res.json({ success: true, data: { id: cod, ...pedido } });
+  } catch (err) {
+    console.error("❌ Erro na rota jetexpress Rastreio:", err);
+    logJetQuery("CONSULTA_RASTREIO_ERRO", codigo, { found: false }, req, Date.now() - t0);
+    return res.status(500).json({ error: "Erro interno." });
+  }
+});
+
+app.get("/api/jetexpress/:codigo", async (req, res) => {
+  const t0 = Date.now();
+  const codigo = (req.params.codigo || "").trim();
+
+  try {
+    if (!codigo) {
+      logJetQuery("CONSULTA_CODIGO", "CODIGO_VAZIO", { found: false }, req, Date.now() - t0);
+      return res.status(400).json({ error: "Código inválido." });
+    }
+
+    const pedido = await getByCodigo(codigo);
+    if (!pedido) {
+      logJetQuery("CONSULTA_CODIGO", codigo, { found: false }, req, Date.now() - t0);
+      return res.status(404).json({ error: "Pedido não encontrado para o código informado." });
+    }
+
+    const cod = pedido.codigo || pedido["Número de pedido JMS"] || pedido._id;
+    logJetQuery("CONSULTA_CODIGO", codigo, { found: true, data: pedido }, req, Date.now() - t0);
+    return res.json({ success: true, data: { id: cod, ...pedido } });
+  } catch (err) {
+    console.error("❌ Erro na rota jetexpress Código:", err);
+    logJetQuery("CONSULTA_CODIGO_ERRO", codigo, { found: false }, req, Date.now() - t0);
+    return res.status(500).json({ error: "Erro interno." });
+  }
 });
 
 // Consulta por Telefone
-app.get('/api/jetexpress/telefone/:tel', (req, res) => {
-  const { tel } = req.params;
-  const record = getByTelefone(tel);
-  if (!record) {
-    return res.status(404).json({ ok: false, error: 'Nenhum pedido encontrado para este telefone.' });
-  }
-  return res.json({ ok: true, data: record });
-});
+app.get("/api/jetexpress/telefone/:tel", async (req, res) => {
+  const t0 = Date.now();
+  const tel = (req.params.tel || "").replace(/\D/g, "");
 
-// Estatísticas da base CSV em memória
-app.get('/api/jetexpress/stats', (_req, res) => {
-  return res.json({ ok: true, ...getJetStats() });
-});
-
-// Recarregar CSV em memória sob demanda
-app.post('/api/jetexpress/reload', async (_req, res) => {
   try {
-    const total = await loadRecordsFromCsv();
-    return res.json({ ok: true, message: `CSV recarregado com sucesso! Total: ${total} registros indexados.` });
+    if (!tel) {
+      logJetQuery("CONSULTA_TELEFONE", "TEL_VAZIO", { found: false }, req, Date.now() - t0);
+      return res.status(400).json({ error: "Telefone inválido." });
+    }
+
+    const pedido = await getByTelefone(tel);
+    if (!pedido) {
+      logJetQuery("CONSULTA_TELEFONE", tel, { found: false }, req, Date.now() - t0);
+      return res.status(404).json({ error: "Nenhum pedido encontrado para este telefone." });
+    }
+
+    const cod = pedido.codigo || pedido["Número de pedido JMS"] || pedido._id;
+    logJetQuery("CONSULTA_TELEFONE", tel, { found: true, data: pedido }, req, Date.now() - t0);
+    return res.json({ success: true, data: { id: cod, ...pedido } });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("❌ Erro na rota jetexpress Telefone:", err);
+    logJetQuery("CONSULTA_TELEFONE_ERRO", tel, { found: false }, req, Date.now() - t0);
+    return res.status(500).json({ error: "Erro interno." });
   }
 });
+// ------------------------
 
-app.post('/api/jetexpress/upload', async (req, res) => {
-  try {
-    const records = req.body;
-    if (!Array.isArray(records) || records.length === 0) {
-      return res.status(400).json({ error: 'Nenhum registro enviado.' });
-    }
+app.use("/api/skalepay", skaleRouter);
 
-    try {
-      const batch = adminDb.batch();
-      const collectionRef = adminDb.collection('jetexpress');
+app.use(express.static(resolve(rootDir, "dist"), { maxAge: "1h" }));
+app.use((_request, response) => response.sendFile(resolve(rootDir, "dist", "index.html")));
 
-      records.forEach(record => {
-        const pedidoJms = record['Número de pedido JMS'];
-        if (pedidoJms) {
-          const docRef = collectionRef.doc(pedidoJms);
-          batch.set(docRef, record, { merge: true });
-        }
-      });
-
-      await batch.commit();
-      console.log(`[JetExpress] Lote de ${records.length} registros gravado no Firebase.`);
-    } catch (fbErr) {
-      console.warn(`[JetExpress] Aviso Firebase: ${fbErr.message}. Servidor operando em modo direto via CSV.`);
-    }
-
-    res.json({ success: true, message: `Lote de ${records.length} registros recebido e processado!` });
-  } catch (error) {
-    console.error('Erro ao salvar lote na jetexpress:', error);
-    res.status(500).json({ error: 'Erro interno no servidor' });
-  }
-});
-
-app.get('/convidados', (req, res) => {
-  const refId = req.query.c || req.query.ref || req.query.id || req.query.convidado;
-  // Se tentou acessar /convidados sem a referência do convidado, redireciona para a solicitação de convite
-  if (!refId) {
-    return res.redirect('/baile-de-mascara');
-  }
-  res.sendFile(join(__dirname, '../public/convidados/index.html'));
-});
-
-app.get('/privateparty', (req, res) => {
-  const refId = req.query.c || req.query.ref || req.query.id || req.query.convidado;
-  if (!refId) {
-    return res.redirect('/baile-de-mascara');
-  }
-  return res.redirect(`/convidados?c=${encodeURIComponent(refId)}`);
-});
-
-app.use('/api', paymentRoutes);
-app.use(express.static(join(__dirname, '../public')));
-
-// Serve frontend build in production
-const distPath = join(__dirname, '../dist');
-if (existsSync(distPath)) {
-  app.use(express.static(distPath, {
-    setHeaders(res, filePath) {
-      if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-      }
-    },
-  }));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.endsWith('.html')) return next();
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.sendFile(join(distPath, 'index.html'));
-  });
-}
-
-// Room registry
-const rooms = new Map();        // roomId → GameRoom
-const privateCodes = new Map(); // roomCode → GameRoom
-const waitingRoom = { room: null };
-
-function findOrCreateRoom() {
-  if (waitingRoom.room && !waitingRoom.room.isFull()) {
-    return waitingRoom.room;
-  }
-  const id = `room_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const room = new GameRoom(id, io, { bet: 0 });
-  rooms.set(id, room);
-  waitingRoom.room = room;
-  return room;
-}
-
-io.on('connection', socket => {
-  console.log('Player connected:', socket.id);
-
-  // ── Public matchmaking ─────────────────────────────────────────────────────
-  socket.on('joinQueue', playerInfo => {
-    const room = findOrCreateRoom();
-    room.addPlayer(socket, playerInfo || { name: 'Anônimo', flag: '🌐', wins: 0 });
-    if (room.isFull()) waitingRoom.room = null;
-  });
-
-  // ── Private rooms ─────────────────────────────────────────────────────────
-  socket.on('createPrivateRoom', ({ roomCode, bet, playerInfo }) => {
-    const code = (roomCode || '').toUpperCase();
-    if (!code) { socket.emit('privateRoomError', { msg: 'Código inválido.' }); return; }
-    if (privateCodes.has(code)) {
-      socket.emit('privateRoomError', { msg: 'Código já em uso. Tente novamente.' });
-      return;
-    }
-    const id = `priv_${code}`;
-    const room = new GameRoom(id, io, { bet: bet || 0 });
-    rooms.set(id, room);
-    privateCodes.set(code, room);
-    room.addPlayer(socket, playerInfo || { name: 'Jogador', flag: '🇧🇷' });
-    socket.emit('privateRoomCreated', { roomCode: code, bet: bet || 0 });
-    console.log(`Private room created: ${code} (bet: ${bet})`);
-  });
-
-  socket.on('joinPrivateRoom', ({ roomCode, playerInfo }) => {
-    const code = (roomCode || '').toUpperCase().trim();
-    const room = privateCodes.get(code);
-    if (!room) {
-      socket.emit('privateRoomError', { msg: 'Sala não encontrada. Verifique o código.' });
-      return;
-    }
-    if (room.isFull()) {
-      socket.emit('privateRoomError', { msg: 'Sala já está cheia.' });
-      return;
-    }
-    room.addPlayer(socket, playerInfo || { name: 'Jogador', flag: '🇧🇷' });
-    privateCodes.delete(code);
-    console.log(`Player joined private room: ${code}`);
-  });
-
-  // ── In-game actions ────────────────────────────────────────────────────────
-  socket.on('shoot', ({ angle, power }) => {
-    const room = rooms.get(socket.data.roomId);
-    if (room) room.handleShoot(socket.data.playerIdx, { angle, power });
-  });
-
-  socket.on('placeBall', ({ x, y }) => {
-    const room = rooms.get(socket.data.roomId);
-    if (room) room.handlePlaceBall(socket.data.playerIdx, { x, y });
-  });
-
-  socket.on('resign', () => {
-    const room = rooms.get(socket.data.roomId);
-    if (!room) return;
-    const winner = 1 - socket.data.playerIdx;
-    room.vencedor = winner;
-    room.estado = 'vitoria';
-    room.broadcast('stateUpdate', { state: room.getState(), netAnims: [] });
-    room.broadcast('gameResult', { winnerIdx: winner, betAmount: room.betAmount });
-  });
-
-  socket.on('rematch', () => {
-    const room = rooms.get(socket.data.roomId);
-    if (!room) return;
-    room.reset();
-    room.broadcast('stateUpdate', { state: room.getState(), netAnims: [] });
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Player disconnected:', socket.id);
-    const room = rooms.get(socket.data?.roomId);
-    if (room) {
-      room.removePlayer(socket);
-      if (room.isEmpty()) {
-        rooms.delete(room.id);
-      } else {
-        room.broadcast('opponentLeft', {});
-      }
-    }
-  });
-});
-
-const PORT = process.env.PORT || 3001;
-http.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
+app.listen(port, "127.0.0.1", () => {
+  console.log(`Fireboard ativo na porta ${port}`);
 });
